@@ -38,6 +38,10 @@ monocular dynamic video. Results are best viewed in videos.
 For business inquiries, please visit our website and submit the form: [NVIDIA Research Licensing](https://www.nvidia.com/en-us/research/inquiries/).
 For any other questions related to the model, please contact Xuanchi, Tianchang or Jun.
 
+## Installation
+<p align="center">:construction: :pick: :hammer_and_wrench: :construction_worker:</p>
+<p align="center">Under construction. Stay tuned!</p>
+
 ## Gallery
 
 - **GEN3C** can be easily applied to video/scene creation from a single image
@@ -55,11 +59,6 @@ For any other questions related to the model, please contact Xuanchi, Tianchang 
 <div align="center">
   <img src="assets/demo_dynamic.gif" alt=""  width="1100" />
 </div>
-
-
-## Installation
-<p align="center">:construction: :pick: :hammer_and_wrench: :construction_worker:</p>
-<p align="center">Under construction. Stay tuned!</p>
 
 ## Acknowledgement
 Our model is based on [NVIDIA Cosmos](https://github.com/NVIDIA/Cosmos) and [Stable Video Diffusion](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid).
