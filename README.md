@@ -10,8 +10,8 @@
 [Jiahui Huang](https://huangjh-pub.github.io/),
 [Huan Ling](https://www.cs.toronto.edu/~linghuan/),
 [Yifan Lu](https://yifanlu0227.github.io/),
-[Merlin Nimier-David](https://yifanlu0227.github.io/),
-[Thomas Müller](https://merlin.nimierdavid.fr/),
+[Merlin Nimier-David](https://merlin.nimierdavid.fr/),
+[Thomas Müller](https://research.nvidia.com/person/thomas-muller),
 [Alexander Keller](https://research.nvidia.com/person/alex-keller),
 [Sanja Fidler](https://www.cs.toronto.edu/~fidler/),
 [Jun Gao](https://www.cs.toronto.edu/~jungao/) <br>
