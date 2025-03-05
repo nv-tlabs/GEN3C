@@ -5,8 +5,8 @@
 </div>
 
 **GEN3C: 3D-Informed World-Consistent Video Generation with Precise Camera Control**<br>
-[Xuanchi Ren](https://xuanchiren.com/),
-[Tianchang Shen](https://www.cs.toronto.edu/~shenti11/)
+[Xuanchi Ren*](https://xuanchiren.com/),
+[Tianchang Shen*](https://www.cs.toronto.edu/~shenti11/)
 [Jiahui Huang](https://huangjh-pub.github.io/),
 [Huan Ling](https://www.cs.toronto.edu/~linghuan/),
 [Yifan Lu](https://yifanlu0227.github.io/),
@@ -15,6 +15,7 @@
 [Alexander Keller](https://research.nvidia.com/person/alex-keller),
 [Sanja Fidler](https://www.cs.toronto.edu/~fidler/),
 [Jun Gao](https://www.cs.toronto.edu/~jungao/) <br>
+\* indicates equal contribution <br>
 **[Paper](), [Project Page](https://research.nvidia.com/labs/toronto-ai/GEN3C/)**
 
 Abstract: We present GEN3C, a generative video model with precise Camera Control and
