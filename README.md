@@ -42,6 +42,9 @@ For any other questions related to the model, please contact Xuanchi, Tianchang 
 <p align="center">:construction: :pick: :hammer_and_wrench: :construction_worker:</p>
 <p align="center">Under construction. Stay tuned!</p>
 
+## Acknowledgement
+Our model is based on [NVIDIA Cosmos](https://github.com/NVIDIA/Cosmos) and [Stable Video Diffusion](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid).
+
 ## Citation
 ```
  @inproceedings{ren2025gen3c,
