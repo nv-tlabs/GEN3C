@@ -38,6 +38,25 @@ monocular dynamic video. Results are best viewed in videos.
 For business inquiries, please visit our website and submit the form: [NVIDIA Research Licensing](https://www.nvidia.com/en-us/research/inquiries/).
 For any other questions related to the model, please contact Xuanchi, Tianchang or Jun.
 
+## Gallery
+
+- **GEN3C** can be easily applied to video/scene creation from a single image
+<div align="center">
+  <img src="assets/demo_3.gif" alt=""  width="1100" />
+</div>
+
+- ... or sparse-view images (we use 5 images here)
+<div align="center">
+  <img src="assets/demo_2.gif" alt=""  width="1100" />
+</div>
+
+
+- .. and dynamic videos 
+<div align="center">
+  <img src="assets/demo_dynamic.gif" alt=""  width="1100" />
+</div>
+
+
 ## Installation
 <p align="center">:construction: :pick: :hammer_and_wrench: :construction_worker:</p>
 <p align="center">Under construction. Stay tuned!</p>
