@@ -16,7 +16,7 @@
 [Sanja Fidler](https://www.cs.toronto.edu/~fidler/),
 [Jun Gao](https://www.cs.toronto.edu/~jungao/) <br>
 \* indicates equal contribution <br>
-**[Paper](), [Project Page](https://research.nvidia.com/labs/toronto-ai/GEN3C/)**
+**[Paper](https://arxiv.org/pdf/2503.03751), [Project Page](https://research.nvidia.com/labs/toronto-ai/GEN3C/)**
 
 Abstract: We present GEN3C, a generative video model with precise Camera Control and
 temporal 3D Consistency. Prior video models already generate realistic videos,
