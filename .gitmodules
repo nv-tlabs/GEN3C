@@ -1,0 +1,27 @@
+[submodule "gui/dependencies/pybind11"]
+	path = gui/dependencies/pybind11
+	url = https://github.com/Tom94/pybind11
+[submodule "gui/dependencies/glfw"]
+	path = gui/dependencies/glfw
+	url = https://github.com/Tom94/glfw
+[submodule "gui/dependencies/args"]
+	path = gui/dependencies/args
+	url = https://github.com/Taywee/args
+[submodule "gui/dependencies/tinylogger"]
+	path = gui/dependencies/tinylogger
+	url = https://github.com/Tom94/tinylogger
+[submodule "gui/dependencies/imgui"]
+	path = gui/dependencies/imgui
+	url = https://github.com/ocornut/imgui.git
+[submodule "gui/dependencies/dlss"]
+	path = gui/dependencies/dlss
+	url = https://github.com/NVIDIA/DLSS
+[submodule "gui/dependencies/OpenXR-SDK"]
+	path = gui/dependencies/OpenXR-SDK
+	url = https://github.com/KhronosGroup/OpenXR-SDK.git
+[submodule "gui/dependencies/zlib"]
+	path = gui/dependencies/zlib
+	url = https://github.com/Tom94/zlib
+[submodule "gui/dependencies/fmt"]
+	path = gui/dependencies/fmt
+	url = https://github.com/fmtlib/fmt

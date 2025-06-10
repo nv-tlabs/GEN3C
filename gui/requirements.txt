@@ -1,0 +1,13 @@
+commentjson
+fastapi[standard]
+httpx  # Already included by fastapi
+imageio
+loguru
+numpy
+opencv-python
+opencv-python-headless
+pybind11
+pyexr
+pyquaternion
+scipy
+tqdm
