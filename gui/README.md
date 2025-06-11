@@ -55,6 +55,8 @@ ssh -NL 8000:<node_hostname>:8000 <jump_hostname>
 
 ## Starting the GEN3C GUI on your local machine
 
+**Pre-requisites**: the GUI was written with CUDA, and therefore requires an NVIDIA GPU as well as the [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (version 11 or above).
+
 On your local machine, clone this repository *including submodules* (`--recursive`) and enter the `gui` subdirectory:
 
 ```bash
