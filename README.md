@@ -182,6 +182,13 @@ CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) torchrun --nproc_per_node=${NUM_GPUS} 
 ## Acknowledgement
 Our model is based on [NVIDIA Cosmos](https://github.com/NVIDIA/Cosmos) and [Stable Video Diffusion](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid).
 
+We are also grateful to several other open-source repositories that we drew inspiration from or built upon during the development of our pipeline:
+- [MoGe](https://github.com/microsoft/MoGe)
+- [TrajectoryCrafter](https://github.com/TrajectoryCrafter/TrajectoryCrafter)
+- [DimensionX](https://github.com/wenqsun/DimensionX)
+- [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2)
+- [Video Depth Anything](https://github.com/DepthAnything/Video-Depth-Anything)
+
 ## Citation
 ```
  @inproceedings{ren2025gen3c,
