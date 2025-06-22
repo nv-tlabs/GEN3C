@@ -41,6 +41,7 @@ class Gen3cPipeline(DiffusionVideo2WorldGenerationPipeline):
         offload_prompt_upsampler: bool = False,
         offload_guardrail_models: bool = False,
         disable_guardrail: bool = False,
+        disable_prompt_encoder: bool = False,
         guidance: float = 7.0,
         num_steps: int = 35,
         height: int = 704,
@@ -64,6 +65,7 @@ class Gen3cPipeline(DiffusionVideo2WorldGenerationPipeline):
             offload_prompt_upsampler: Whether to offload prompt upsampler
             offload_guardrail_models: Whether to offload guardrail models
             disable_guardrail: Whether to disable guardrail
+            disable_prompt_encoder: Whether to disable prompt encoder
             guidance: Classifier-free guidance scale
             num_steps: Number of diffusion sampling steps
             height: Height of output video
@@ -85,6 +87,7 @@ class Gen3cPipeline(DiffusionVideo2WorldGenerationPipeline):
             offload_prompt_upsampler=offload_prompt_upsampler,
             offload_guardrail_models=offload_guardrail_models,
             disable_guardrail=disable_guardrail,
+            disable_prompt_encoder=disable_prompt_encoder,
             guidance=guidance,
             num_steps=num_steps,
             height=height,

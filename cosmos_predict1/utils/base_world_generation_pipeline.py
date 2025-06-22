@@ -22,7 +22,7 @@ import numpy as np
 import torch
 
 from cosmos_predict1.auxiliary.guardrail.common import presets as guardrail_presets
-from cosmos_predict1.auxiliary.t5_text_encoder import CosmosT5TextEncoder
+from cosmos_predict1.auxiliary.t5_text_encoder import CosmosT5TextEncoder, DummyT5TextEncoder
 
 
 class BaseWorldGenerationPipeline(ABC):
@@ -37,6 +37,7 @@ class BaseWorldGenerationPipeline(ABC):
         offload_text_encoder_model: bool = False,
         offload_guardrail_models: bool = False,
         disable_guardrail: bool = False,
+        disable_prompt_encoder: bool = False,
     ):
         """Initialize base world generation pipeline.
 
@@ -56,6 +57,7 @@ class BaseWorldGenerationPipeline(ABC):
             offload_text_encoder_model: If True, moves T5 encoder to CPU after encoding
             offload_guardrail_models: If True, moves safety models to CPU after checks
             disable_guardrail: If True, disable guardrail
+            disable_prompt_encoder: If True, disable prompt encoder
         """
         self.inference_type = inference_type
         self.checkpoint_dir = checkpoint_dir
@@ -69,6 +71,7 @@ class BaseWorldGenerationPipeline(ABC):
         self.offload_guardrail_models = offload_guardrail_models
 
         self.disable_guardrail = disable_guardrail
+        self.disable_prompt_encoder = disable_prompt_encoder
 
         # Initialize model instances
         self.text_guardrail = None
@@ -78,7 +81,7 @@ class BaseWorldGenerationPipeline(ABC):
 
         self._load_model()
 
-        if not self.offload_text_encoder_model:
+        if not self.offload_text_encoder_model or self.disable_prompt_encoder:
             self._load_text_encoder_model()
         if not self.disable_guardrail and not self.offload_guardrail_models:
             if self.has_text_input:
@@ -121,7 +124,10 @@ class BaseWorldGenerationPipeline(ABC):
         Returns:
             Loaded T5 text encoder model instance
         """
-        self.text_encoder = CosmosT5TextEncoder(cache_dir=os.path.join(self.checkpoint_dir, "google-t5/t5-11b"))
+        if self.disable_prompt_encoder:
+            self.text_encoder = DummyT5TextEncoder(device="cuda")
+        else:
+            self.text_encoder = CosmosT5TextEncoder(cache_dir=os.path.join(self.checkpoint_dir, "google-t5/t5-11b"))
 
     def _load_text_guardrail(self):
         """Load text safety classifier models.

@@ -149,6 +149,7 @@ def demo(args):
         offload_prompt_upsampler=args.offload_prompt_upsampler,
         offload_guardrail_models=args.offload_guardrail_models,
         disable_guardrail=args.disable_guardrail,
+        disable_prompt_encoder=args.disable_prompt_encoder,
         guidance=args.guidance,
         num_steps=args.num_steps,
         height=args.height,

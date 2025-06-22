@@ -132,6 +132,22 @@ The `--camera_rotation` argument controls how the camera rotates during movement
 ##### Movement Distance
 The `--movement_distance` argument controls how far the camera moves from its initial position. The default value is 0.3. A larger value will result in more dramatic camera movement, while a smaller value will create more subtle movement.
 
+##### GPU Memory Requirements
+
+We have tested GEN3C only on H100 and A100 GPUs. For GPUs with limited memory, you can fully offload all models by appending the following flags to your command:
+
+```bash
+--offload_diffusion_transformer \
+--offload_tokenizer \
+--offload_text_encoder_model \
+--offload_prompt_upsampler \
+--offload_guardrail_models \
+--disable_guardrail \
+--disable_prompt_encoder
+```
+Maximum observed memory during inference with full offloading: ~43GB. Note: Memory usage may vary depending on system specifications and is provided for reference only.
+
+
 ### Example 2: Video to Video Generation
 For video input, GEN3C requires additional depth information, camera intrinsics, and extrinsics. These can be obtained using your choice of SLAM packages. For testing purposes, we provide example data.
 

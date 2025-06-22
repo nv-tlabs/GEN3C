@@ -99,6 +99,7 @@ class DiffusionText2WorldGenerationPipeline(BaseWorldGenerationPipeline):
         offload_prompt_upsampler: bool = False,
         offload_guardrail_models: bool = False,
         disable_guardrail: bool = False,
+        disable_prompt_encoder: bool = False,
         guidance: float = 7.0,
         num_steps: int = 35,
         height: int = 704,
@@ -122,6 +123,7 @@ class DiffusionText2WorldGenerationPipeline(BaseWorldGenerationPipeline):
             offload_prompt_upsampler: Whether to offload prompt upsampler
             offload_guardrail_models: Whether to offload guardrail models
             disable_guardrail: Whether to disable guardrail
+            disable_prompt_encoder: Whether to disable prompt encoder
             guidance: Classifier-free guidance scale
             num_steps: Number of diffusion sampling steps
             height: Height of output video
@@ -155,6 +157,7 @@ class DiffusionText2WorldGenerationPipeline(BaseWorldGenerationPipeline):
             offload_text_encoder_model=offload_text_encoder_model,
             offload_guardrail_models=offload_guardrail_models,
             disable_guardrail=disable_guardrail,
+            disable_prompt_encoder=disable_prompt_encoder,
         )
         self.prompt_upsampler_dir = prompt_upsampler_dir
         self.enable_prompt_upsampler = enable_prompt_upsampler
@@ -420,6 +423,7 @@ class DiffusionVideo2WorldGenerationPipeline(DiffusionText2WorldGenerationPipeli
         offload_prompt_upsampler: bool = False,
         offload_guardrail_models: bool = False,
         disable_guardrail: bool = False,
+        disable_prompt_encoder: bool = False,
         guidance: float = 7.0,
         num_steps: int = 35,
         height: int = 704,
@@ -444,6 +448,7 @@ class DiffusionVideo2WorldGenerationPipeline(DiffusionText2WorldGenerationPipeli
             offload_prompt_upsampler: Whether to offload prompt upsampler
             offload_guardrail_models: Whether to offload guardrail models
             disable_guardrail: Whether to disable guardrail
+            disable_prompt_encoder: Whether to disable prompt encoder
             guidance: Classifier-free guidance scale
             num_steps: Number of diffusion sampling steps
             height: Height of output video
@@ -467,6 +472,7 @@ class DiffusionVideo2WorldGenerationPipeline(DiffusionText2WorldGenerationPipeli
             offload_prompt_upsampler=offload_prompt_upsampler,
             offload_guardrail_models=offload_guardrail_models,
             disable_guardrail=disable_guardrail,
+            disable_prompt_encoder=disable_prompt_encoder,
             guidance=guidance,
             num_steps=num_steps,
             height=height,

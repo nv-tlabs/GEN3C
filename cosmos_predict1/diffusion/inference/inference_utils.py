@@ -163,6 +163,11 @@ def add_common_arguments(parser):
         action="store_true",
         help="Disable guardrail models",
     )
+    parser.add_argument(
+        "--disable_prompt_encoder",
+        action="store_true",
+        help="Disable prompt encoder to save memory, returns dummy embeddings instead",
+    )
 
 
 # Function to fully remove an argument

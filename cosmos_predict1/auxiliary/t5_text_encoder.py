@@ -106,3 +106,27 @@ class CosmosT5TextEncoder(torch.nn.Module):
             encoded_text[batch_id][lengths[batch_id] :] = 0
 
         return encoded_text, attn_mask
+
+
+class DummyT5TextEncoder(torch.nn.Module):
+    def __init__(self, device: str = "cuda"):
+        super().__init__()
+        self.device = device
+
+    @torch.inference_mode()
+    def encode_prompts(
+        self, prompts: Union[str, List[str]], max_length: int = 512
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if isinstance(prompts, str):
+            prompts = [prompts]
+
+        if not prompts:
+            raise ValueError("The input prompt list is empty.")
+
+        batch_size = len(prompts)
+    
+        dummy_text_embedding = torch.zeros(batch_size, max_length, 1024, device=self.device)
+        dummy_text_mask = torch.zeros(batch_size, max_length, device=self.device, dtype=torch.bool)
+        dummy_text_mask[0] = True
+
+        return dummy_text_embedding, dummy_text_mask
