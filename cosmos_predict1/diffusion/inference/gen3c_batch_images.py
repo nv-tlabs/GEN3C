@@ -279,30 +279,6 @@ def load_and_preprocess_input(input_item: Dict[str, Union[str, int]], target_hei
     return image_float, image_original
 
 
-# def save_output_images(video_frames: np.ndarray, output_dir: str, base_name: str) -> List[str]:
-#     """Save video frames as individual images."""
-#     os.makedirs(output_dir, exist_ok=True)
-#     saved_paths = []
-    
-#     # video_frames shape: [1, n_frames, channels, height, width]
-#     frames = video_frames[0]  # Remove batch dimension
-    
-#     for i, frame in enumerate(frames):
-#         # Convert from [C, H, W] to [H, W, C]
-#         frame_hwc = frame.transpose(1, 2, 0)
-        
-#         # Convert from float to uint8
-#         frame_uint8 = (frame_hwc * 255).astype(np.uint8)
-        
-#         # Convert RGB to BGR for OpenCV
-#         # frame_bgr = cv2.cvtColor(frame_uint8, cv2.COLOR_RGB2BGR)
-        
-#         output_path = os.path.join(output_dir, f"{base_name}_frame_{i:04d}.jpg")
-#         # cv2.imwrite(output_path, frame_bgr)
-#         Image.fromarray(frame_uint8).save(output_path)
-#         saved_paths.append(output_path)
-    
-#     return saved_paths
 
 
 def generate_custom_trajectory(args: argparse.Namespace, device: str) -> tuple[torch.Tensor, torch.Tensor]:
@@ -322,6 +298,7 @@ def generate_custom_trajectory(args: argparse.Namespace, device: str) -> tuple[t
     ], dtype=torch.float32, device=device)
     
     # Load custom trajectory config if provided
+    # import pdb; pdb.set_trace()
     if args.trajectory_config:
         config = load_trajectory_config(args.trajectory_config)
         trajectory_type = config.get("trajectory_type", args.custom_trajectory)
@@ -348,29 +325,6 @@ def generate_custom_trajectory(args: argparse.Namespace, device: str) -> tuple[t
     
     return generated_w2cs, generated_intrinsics
 
-def convert_vggt_c2w_to_moge_w2c(c2w_vggt: np.ndarray) -> np.ndarray:
-    """
-    Convert VGGT camera-to-world pose (metric) to MoGe-compatible world-to-camera (non-metric).
-    
-    Args:
-        c2w_vggt: np.ndarray of shape (4, 4) — VGGT camera-to-world matrix in metric scale.
-
-    Returns:
-        w2c_moge: np.ndarray of shape (4, 4) — MoGe-compatible world-to-camera matrix.
-    """
-
-    # 1. Invert c2w → w2c
-    w2c = np.linalg.inv(c2w_vggt)
-
-    # 2. Flip Z-axis for OpenCV → OpenGL (Z-forward → Z-backward)
-    flip_z = np.diag([1, -1, -1, 1])  # This flips Z
-    w2c_opengl = w2c @ flip_z
-
-    # 3. Normalize scale (optional): divide translation vector norm
-    scale = np.linalg.norm(w2c_opengl[:3, 3])
-    w2c_opengl[:3, 3] /= scale
-
-    return w2c_opengl
 
 def main():
     args = parse_arguments()
@@ -472,7 +426,7 @@ def main():
     print(f"Downscaling images from {images_np_bhwc_vggt_resized_and_padded_shape.shape[1:3]} to {height, width}")
 
 
-    import pdb; pdb.set_trace()  # Debugging breakpoint
+    # import pdb; pdb.set_trace()  # Debugging breakpoint
     ex, intrinsics = pose_encoding_to_extri_intri(output["pose_enc"], image_size_hw=(height, width))
 
     B = ex.shape[1]
@@ -502,88 +456,101 @@ def main():
     world_to_cameras_np_b44 = w2cs  # Shape: [B, 4, 4]
     # focal_lengths_np_b2 = intrinsics.squeeze(0)[:, :2, :2].cpu().numpy()  # Shape: [B, 2]
 
-    focal_lengths_np_b2 = []
-    principal_point_np_b2 = []
-
-    for i in range(B):
-        # focal_length = intrinsics.squeeze(0)[i, :2, :2].cpu().numpy()
-        fx = intrinsics.squeeze(0)[i, 0, 0]
-        fy = intrinsics.squeeze(0)[i, 1, 1]
-
-        cx = intrinsics.squeeze(0)[i, 0, 2]
-        cy = intrinsics.squeeze(0)[i, 1, 2]
-        # focal_lengths_np_b2.append(focal_length)
-
-        focal_lengths_np_b2.append([fx.item(), fy.item()])
-        principal_point_np_b2.append([cx.item(), cy.item()])
-
-    focal_lengths_np_b2 = np.array(focal_lengths_np_b2, dtype=np.float32)  # Shape: [B, 2]
-    principal_point_np_b2 = np.array(principal_point_np_b2, dtype=np.float32)  # Shape: [B, 2]
-
-
-    resolutions_np_b2 = np.array([[args.width, args.height]] * B, dtype=np.float32)  # Shape: [B, 2]
-    masks_np_bhw = masks_np  # Assuming all pixels are valid for now, so masks are all ones
 
 
     # import pdb; pdb.set_trace()
 
-    gen3c_height = 704
-    gen3c_width = 1280
+
+    # fixed Gen3C raster
+    gen3c_height, gen3c_width = 704, 1280
+    args.height = gen3c_height          # used by image loader
+    args.width  = gen3c_width
+
+    # gen3c_height = 704
+    # gen3c_width = 1280
 
 
+    # _, vggt_h, vggt_w, _ = images_np_bhwc_vggt_resized_and_padded_shape.shape
+
+    # scale = min(gen3c_width / vggt_w, gen3c_height / vggt_h)
+    # scaled_h = int(round(vggt_h * scale))
+    # scaled_w = int(round(vggt_w * scale))
+
+    # images_np_bhwc = np.array(
+    #     [cv2.resize(img, (scaled_w, scaled_h), interpolation=cv2.INTER_LINEAR) for img in images_np_bhwc_vggt_resized_and_padded_shape]
+    # ) 
+    # depths_np = np.array(
+    #     [cv2.resize(depth, (scaled_w, scaled_h), interpolation=cv2.INTER_LINEAR) for depth in depths_np]
+    # )
+    # masks_np_bhw = np.array(
+    #     [cv2.resize(mask, (scaled_w, scaled_h), interpolation=cv2.INTER_LINEAR) for mask in masks_np]
+    # )
+
+    # # Adjust padding 
+    # pad_left = (gen3c_width - scaled_w) // 2
+    # pad_right = gen3c_width - scaled_w - pad_left
+    # pad_top = (gen3c_height - scaled_h) // 2
+    # pad_bottom = gen3c_height - scaled_h - pad_top
+
+
+    # def pad(arr, val=0.0):
+    #     if arr.ndim == 4:   # images
+    #         spec = ((0,0), (pad_top,pad_bottom), (pad_left,pad_right), (0,0))
+    #     else:               # depth / mask
+    #         spec = ((0,0), (pad_top,pad_bottom), (pad_left,pad_right))
+    #     return np.pad(arr, spec, mode="constant", constant_values=val)
+
+    # # import pdb; pdb.set_trace()  # Debugging breakpoint
+    # images_np_bhwc = pad(images_np_bhwc, val=0.0)  # Shape: [B, H, W, C]
+    # depths_np = pad(depths_np, val=0.0)  # Shape: [B, H, W]
+    # masks_np_bhw = pad(masks_np_bhw, val=0.0)  # Shape: [B, H, W]
+
+    # ---------- new: stretch directly to 704×1280 ------------------
     _, vggt_h, vggt_w, _ = images_np_bhwc_vggt_resized_and_padded_shape.shape
 
-    scale = min(gen3c_width / vggt_w, gen3c_height / vggt_h)
-    scaled_h = int(round(vggt_h * scale))
-    scaled_w = int(round(vggt_w * scale))
+    scale_w = gen3c_width  / vggt_w
+    scale_h = gen3c_height / vggt_h
 
     images_np_bhwc = np.array(
-        [cv2.resize(img, (scaled_w, scaled_h), interpolation=cv2.INTER_LINEAR) for img in images_np_bhwc_vggt_resized_and_padded_shape]
-    ) 
+        [cv2.resize(img, (gen3c_width, gen3c_height), interpolation=cv2.INTER_LINEAR)
+         for img in images_np_bhwc_vggt_resized_and_padded_shape]
+    )
     depths_np = np.array(
-        [cv2.resize(depth, (scaled_w, scaled_h), interpolation=cv2.INTER_LINEAR) for depth in depths_np]
+        [cv2.resize(depth, (gen3c_width, gen3c_height), interpolation=cv2.INTER_LINEAR)
+         for depth in depths_np]
     )
     masks_np_bhw = np.array(
-        [cv2.resize(mask, (scaled_w, scaled_h), interpolation=cv2.INTER_LINEAR) for mask in masks_np]
-    )
-
-    # Adjust padding 
-    pad_left = (gen3c_width - scaled_w) // 2
-    pad_right = gen3c_width - scaled_w - pad_left
-    pad_top = (gen3c_height - scaled_h) // 2
-    pad_bottom = gen3c_height - scaled_h - pad_top
-
-
-    def pad(arr, val=0.0):
-        if arr.ndim == 4:   # images
-            spec = ((0,0), (pad_top,pad_bottom), (pad_left,pad_right), (0,0))
-        else:               # depth / mask
-            spec = ((0,0), (pad_top,pad_bottom), (pad_left,pad_right))
-        return np.pad(arr, spec, mode="constant", constant_values=val)
-
-    # import pdb; pdb.set_trace()  # Debugging breakpoint
-    images_np_bhwc = pad(images_np_bhwc, val=0.0)  # Shape: [B, H, W, C]
-    depths_np = pad(depths_np, val=0.0)  # Shape: [B, H, W]
-    masks_np_bhw = pad(masks_np_bhw, val=0.0)  # Shape: [B, H, W]
+        [cv2.resize(mask.astype(np.float32), (gen3c_width, gen3c_height), interpolation=cv2.INTER_NEAREST)
+            for mask in masks_np]   
+    ).astype(np.float32)
 
     Image.fromarray((images_np_bhwc[0] * 255).astype(np.uint8)).save("gen3c_input_scaled_test_image.png")   
     Image.fromarray((depths_np[0] * 50).astype(np.uint8)).save("gen3c_input_scaled_test_depth.png")    
     Image.fromarray((masks_np_bhw[0] * 255).astype(np.uint8)).save("gen3c_input_scaled_test_mask.png")
 
-    # Now setting up
-    print(f"Focal length before scaling: {focal_lengths_np_b2[0]}")
-    focal_lengths_np_b2 = np.array(
-        [[fx * scale, fy * scale] for fx, fy in focal_lengths_np_b2],
-        dtype=np.float32
-    )
-    print(f"Focal length after scaling: {focal_lengths_np_b2[0]}")
-    # Adjust principal points
-    print(f"Principal points before scaling: {principal_point_np_b2[0]}")
-    principal_point_np_b2 = np.array(
-        [[cx * scale + pad_left, cy * scale + pad_top] for cx, cy in principal_point_np_b2],
-        dtype=np.float32
-    )
-    print(f"Principal points after scaling: {principal_point_np_b2[0]}")
+    focal_lengths_np_b2 = []
+    principal_point_np_b2 = []
+
+    for i in range(B):
+        fx_orig = intrinsics.squeeze(0)[i, 0, 0].item()
+        fy_orig = intrinsics.squeeze(0)[i, 1, 1].item()
+        cx_orig = intrinsics.squeeze(0)[i, 0, 2].item()
+        cy_orig = intrinsics.squeeze(0)[i, 1, 2].item()
+
+        fx = fx_orig * scale_w
+        fy = fy_orig * scale_h
+        cx = cx_orig * scale_w
+        cy = cy_orig * scale_h
+
+        focal_lengths_np_b2.append([fx, fy])
+        principal_point_np_b2.append([cx, cy])
+
+    focal_lengths_np_b2 = np.array(focal_lengths_np_b2, dtype=np.float32)  # Shape: [B, 2]
+    principal_point_np_b2 = np.array(principal_point_np_b2, dtype=np.float32)  # Shape: [B, 2]
+    resolutions_np_b2 = np.array([[args.width, args.height]] * B, dtype=np.float32)  # Shape: [B, 2]
+
+    print(f"Scaled fx,fy → {focal_lengths_np_b2[0]}")
+    print(f"Scaled cx,cy → {principal_point_np_b2[0]}")
 
     print(f"Resolutions before scaling: {resolutions_np_b2[0]}")
     resolutions_np_b2 = np.array(
@@ -620,49 +587,115 @@ def main():
                 # input_format=["B", "N", "C", "H", "W"],  # Assuming input format is [B, V, C, H, W], which is different from the defaul [F, C, H, W]
                 treat_multi_inputs_as_views=True
             )
+    
+
+
 
 
 ################### END OF SEED MODEL MULTIPLE ####################
 
-    cache_points_xyz = model.cache.input_points.cpu().numpy().reshape(-1, 3)  # Shape: [P, 3]
-    cache_points_rgb = model.cache.input_image.cpu().numpy().transpose(0,1,2,3,5,6,4).reshape(-1,3)  # Shape: [P, 3]
-    # import pdb; pdb.set_trace()
-
-    # print("[B, F, N , V,  C,  H,  W]")
-
-    trimesh_cache_points = trimesh.PointCloud(cache_points_xyz, cache_points_rgb)
-    trimesh_cache_points.export("gen3c_cache_scaled_test_point_cloud.ply")
-
-    # exit(0)
-
-#################### SEED AND UPDATE CACHE ####################
-    # model.seed_model_from_values(
-    #     images_np=images_np_bhwc[:1],
-    #     # depths_np=depths_np[:1],    
-    #     depths_np = None,
-    #     world_to_cameras_np=world_to_cameras_np_b44[:1],
-    #     focal_lengths_np=focal_lengths_np_b2[:1],
-    #     principal_point_rel_np=principal_point_rel_np_b2[:1],
-    #     resolutions=resolutions_np_b2[:1],
-    #     masks_np=masks_np_bhw[:1],
-    # )
-
-    # for i in tqdm(range(1, B), desc="Seeding model with images"):
-
-    #     intrinsic_i_33 = intrinsics.squeeze(0)[i, :3, :3].cpu().numpy()
-
-        
-    #     model.cache.update_cache(
-    #         new_image= torch.from_numpy(images_np_bhwc[i].transpose(2, 0, 1)).unsqueeze(0),
-    #         new_depth= torch.from_numpy(depths_np[i:i+1]).unsqueeze(0),  # Shape: [1, 1, H, W]
-    #         new_w2c = torch.from_numpy(world_to_cameras_np_b44[i:i+1]),
-    #         new_mask= torch.from_numpy(masks_np_bhw[i:i+1]),
-    #         new_intrinsics = torch.from_numpy(intrinsic_i_33[np.newaxis, ...]),  # Shape: [1, 3, 3]
-    #         depth_alignment=True,
-    #     )
 
 
-################ END OF SEED AND UPDATE CACHE ####################
+    def export_rgb_pointcloud_from_cache(
+        cache_object,
+        output_path: str,
+        mask_keep_value: float = 0.5,
+        subsample_step: int = 1,   # e.g. 4 if you only want every 4-th pixel
+    ) -> None:
+        """
+        Convert the current contents of a Cache3D_* instance into an RGB point cloud on disk.
+
+        Parameters
+        ----------
+        cache_object : Cache3D_Base
+            The populated cache (Buffer or 4D work just as well).
+        output_path : str | Path
+            Destination *.ply file.
+        mask_keep_value : float, default 0.5
+            Pixels whose cache_object.input_mask < mask_keep_value are discarded.
+            If the cache has no mask, everything is kept.
+        subsample_step : int, default 1
+            Use >1 to thin out very dense clouds (keep every subsample_step-th pixel
+            along height and width to save RAM / disk space).
+        """
+        from pathlib import Path
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Shapes: B, F, N, V, H, W, 3  and  B, F, N, V, 3, H, W
+        point_tensor = cache_object.input_points
+        color_tensor = cache_object.input_image
+        mask_tensor = cache_object.input_mask  # may be None
+
+        if point_tensor is None:
+            raise ValueError("cache_object.input_points is None – did you forget to feed depth or points?")
+
+        # Bring tensors to CPU and flatten all dimensions except spatial
+        point_tensor = point_tensor.cpu()[:, :, :, :, ::subsample_step, ::subsample_step].contiguous()
+        color_tensor = color_tensor.cpu()[:, :, :, :, :, ::subsample_step, ::subsample_step].contiguous()
+
+        batch_size, frame_count, buffer_count, view_count, height, width, _ = point_tensor.shape
+        total_pixels = batch_size * frame_count * buffer_count * view_count * height * width
+
+        point_coordinates = point_tensor.view(total_pixels, 3)  # (N_total, 3)
+        color_channels_first = color_tensor.permute(0, 1, 2, 3, 5, 6, 4)  # move C from 5th pos to last
+        # rgb_colors = (color_channels_first * 255.0).clamp(0.0, 255.0).to(torch.uint8).view(total_pixels, 3)
+        rgb_colors = color_channels_first * 0.5 + 0.5
+
+        # import pdb ; pdb.set_trace()  # Debugging breakpoint
+        rgb_colors = rgb_colors.reshape(total_pixels, 3)  # (N_total, 3)
+
+        # Apply mask if present
+        if mask_tensor is not None:
+            mask_tensor = mask_tensor.cpu()[:, :, :, :, :, ::subsample_step, ::subsample_step]
+            valid_mask = (mask_tensor.view(total_pixels) >= mask_keep_value)
+            point_coordinates = point_coordinates[valid_mask]
+            rgb_colors = rgb_colors[valid_mask]
+
+        # Convert tensors to NumPy so plyfile can consume them
+        point_coordinates = point_coordinates.numpy()
+        rgb_colors = rgb_colors.numpy()
+
+        # Build a structured array for PLY: (x,y,z,r,g,b)
+        vertex_data = np.empty(len(point_coordinates),
+                            dtype=[("x", "f4"), ("y", "f4"), ("z", "f4"),
+                                    ("red", "u1"), ("green", "u1"), ("blue", "u1")])
+        vertex_data["x"] = point_coordinates[:, 0]
+        vertex_data["y"] = point_coordinates[:, 1]
+        vertex_data["z"] = point_coordinates[:, 2]
+        vertex_data["red"] = rgb_colors[:, 0]
+        vertex_data["green"] = rgb_colors[:, 1]
+        vertex_data["blue"] = rgb_colors[:, 2]
+
+        # Write to disk
+        # ply_element = PlyElement.describe(vertex_data, "vertex")
+        # PlyData([ply_element], text=False).write(str(output_path))
+        # print(f"Wrote {len(vertex_data):,} points to {output_path.resolve()}")
+
+        trimesh_cache_points = trimesh.PointCloud(point_coordinates, rgb_colors)
+        saved = trimesh_cache_points.export(str(output_path))
+
+
+
+    from vggt.utils.geometry import unproject_depth_map_to_point_map
+
+    input_points_recalculated = unproject_depth_map_to_point_map(
+        depth_map = depths_np[..., None],  # Shape: [B, H, W, 1]
+        extrinsics_cam = world_to_cameras_np_b44,
+        intrinsics_cam = intrinsics.squeeze(0).cpu().numpy()[:, :3, :3],  # Shape: [B, 3, 3]
+    )
+    V, H, W, _ = input_points_recalculated.shape
+
+    # model.cache.input_points = torch.from_numpy(input_points_recalculated.reshape(1, 1, V, 1, H, W, 3)).float().to(device)
+    # model.cache.input_mask
+
+    export_rgb_pointcloud_from_cache(
+        model.cache,
+        output_path="gen3c_cache_scaled_test_point_cloud.ply",
+        mask_keep_value=0.5,  # Keep points with mask value >= 0.5
+        subsample_step=1,  # Keep all points
+    )
+
 
     result = model.inference_on_cameras(
         view_cameras_w2cs=view_cameras_w2cs,
@@ -684,10 +717,6 @@ def main():
     # Save output images
     output_subdir = os.path.join(args.output_images_dir, base_name)
 
-    # import pdb; pdb.set_trace()
-    # saved_paths = save_output_images(result["video"][:,:,::-1,...], output_subdir, base_name)
-    # saved_paths = save_output_images(result["video"], output_subdir, base_name)
-    # log.info(f"Saved {len(saved_paths)} output images to {output_subdir}")
     
     import pdb; pdb.set_trace()  # Debugging breakpoint
     # Save as video if requested
@@ -699,10 +728,6 @@ def main():
         # Convert video format for saving
         video_frames = result["video"][0]  # Remove batch dimension
         video_frames_uint8 = video_frames.transpose(0, 2, 3, 1)  # [T, H, W, C]
-
-        # video_frames_uint8 = video_frames_uint8[:, :, ::-1]  # Convert RGB to BGR for OpenCV
-        # video_frames_uint8 = video_frames_uint8[:, :, ::-1, :]
-        
 
         save_video(
             video=video_frames_uint8,
