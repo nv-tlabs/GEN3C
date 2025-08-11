@@ -133,6 +133,7 @@ class DiffusionDecoderGeneralDIT(GeneralDIT):
             else in_channels
         )
         in_channels = in_channels + 1 if concat_padding_mask else in_channels
+        # Should be in_channels = 82
 
         self.x_embedder = PatchEmbed(
             spatial_patch_size=patch_spatial,

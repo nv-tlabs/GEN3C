@@ -20,7 +20,10 @@ ln -sf $CONDA_PREFIX/lib/python3.10/site-packages/nvidia/*/include/* $CONDA_PREF
 pip install transformer-engine[pytorch]==1.12.0
 # Install Apex for inference.
 git clone https://github.com/NVIDIA/apex
-CUDA_HOME=$CONDA_PREFIX pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./apex
+# CUDA_HOME=$CONDA_PREFIX pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./apex
+# CUDA_HOME=/usr/local/cuda-12.6 uv pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation ./apex --config-settings=build-args="--cpp_ext --cuda_ext"
+CUDA_HOME=/usr/local/cuda-12.6 uv pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation ./apex --config-settings="--build-option=--cpp_ext" --config-settings="--build-option=--cuda_ext"
+
 # Install MoGe for inference.
 pip install git+https://github.com/microsoft/MoGe.git
 ```

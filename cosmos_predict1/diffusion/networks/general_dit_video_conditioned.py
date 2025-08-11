@@ -96,6 +96,8 @@ class VideoExtendGeneralDIT(GeneralDIT):
         """
         B, C, T, H, W = x.shape
 
+        # import pdb; pdb.set_trace()
+
         if data_type == DataType.VIDEO:
             assert condition_video_input_mask is not None, "condition_video_input_mask is required for video data type"
 
@@ -118,7 +120,7 @@ class VideoExtendGeneralDIT(GeneralDIT):
             )
 
         return super().forward(
-            x=x,
+            x=x, # Concatenated both gt latents (single imageo or video) and warped latents (video) go here if condition_video_pose enabled
             timesteps=timesteps,
             crossattn_emb=crossattn_emb,
             crossattn_mask=crossattn_mask,
@@ -161,6 +163,8 @@ class VideoExtendGeneralDIT(GeneralDIT):
             data_type, DataType
         ), f"Expected DataType, got {type(data_type)}. We need discuss this flag later."
         original_shape = x.shape
+
+        # Here is spatial maxpooling done probably 
         x_B_T_H_W_D, rope_emb_L_1_1_D, extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D = self.prepare_embedded_sequence(
             x,
             fps=fps,
@@ -194,6 +198,8 @@ class VideoExtendGeneralDIT(GeneralDIT):
             crossattn_mask = crossattn_mask[:, None, None, :].to(dtype=torch.bool)  # [B, 1, 1, length]
         else:
             crossattn_mask = None
+
+        # import pdb; pdb.set_trace()
 
         x = rearrange(x_B_T_H_W_D, "B T H W D -> T H W B D")
         if extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D is not None:

@@ -535,7 +535,7 @@ class JointImageVideoTokenizer(BaseVAE, VideoTokenizerInterface):
         if T == 1:
             return self.encode_image(state)
 
-        return self.video_vae.encode(state)
+        return self.video_vae.encode(state) # moves from [B, C, T, H, W] to [B, 16, T/8, H/8, W/8] shape
 
     @torch.no_grad()
     def decode(self, latent: torch.Tensor) -> torch.Tensor:

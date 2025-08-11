@@ -130,7 +130,7 @@ class DiffusionT2WModel(torch.nn.Module):
         Returns:
             Encoded latent representation scaled by sigma_data
         """
-        return self.tokenizer.encode(state) * self.sigma_data
+        return self.tokenizer.encode(state) * self.sigma_data # moves from [B, C, T, H, W] to [B, 16, T/8, H/8, W/8] shape
 
     @torch.no_grad()
     def decode(self, latent: torch.Tensor) -> torch.Tensor:

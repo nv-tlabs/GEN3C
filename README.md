@@ -26,7 +26,7 @@ such as objects popping in and out of existence. Camera control, if implemented
 at all, is imprecise, because camera parameters are mere inputs to the neural
 network which must then infer how the video depends on the camera. In contrast,
 GEN3C is guided by a 3D cache: point clouds obtained by predicting the
-pixel-wise depth of seed images or previously generated frames. When generating
+pixel-wise depth of seed images or previously generated frames. When gpromptenerating
 the next frames, GEN3C is conditioned on the 2D renderings of the 3D cache with
 the new camera trajectory provided by the user. Crucially, this means that
 GEN3C neither has to remember what it previously generated nor does it have to
@@ -86,6 +86,68 @@ CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/infer
     --guidance 1 \
     --foreground_masking
 ```
+
+Running with cheap GPU usage:
+
+```bash
+CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/inference/gen3c_single_image.py \
+    --checkpoint_dir checkpoints \
+    --input_image_path assets/diffusion/000000.png \
+    --video_save_name test_single_image \
+    --guidance 1 \
+    --foreground_masking \
+    --offload_diffusion_transformer \
+    --offload_tokenizer \
+    --offload_text_encoder_model \
+    --offload_prompt_upsampler \
+    --offload_guardrail_models
+```
+
+```bash
+
+CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/inference/gen3c_single_image.py \
+    --checkpoint_dir checkpoints \
+    --input_image_path /home/dusan001/generation_and_reconstruction/pantheon_seva_output/pantheon_576.jpg \
+    --video_save_name pantheon \
+    --guidance 1 \
+    --foreground_masking \
+    --offload_diffusion_transformer \
+    --offload_tokenizer \
+    --offload_text_encoder_model \
+    --offload_prompt_upsampler \
+    --offload_guardrail_models \
+    --save_buffer
+```
+
+
+### Batch by Dusan
+
+
+```bash
+CUDA_VISIBLE_DEVICES=1 CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/inference/gen3c_batch_images.py \
+    --checkpoint_dir checkpoints \
+    --input_videos_dir /home/dusan001/generation_and_reconstruction \
+    --input_videos_pattern pantheon_stable_virtual_camera.mp4 \
+    --output_images_dir results_from_batches \
+    --save_as_video \
+    --frame_extraction_method all \
+    --foreground_masking
+    # --max_frames # max frames frames to extract when loading all images
+    
+## trying interval
+CUDA_VISIBLE_DEVICES=1 CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/inference/gen3c_batch_images.py     --checkpoint_dir checkpoints     --input_videos_dir /home/dusan001/generation_and_reconstruction     --input_videos_pattern pantheon_stable_virtual_camera.mp4     --output_images_dir results_from_batches     --save_as_video     --frame_extraction_method interval  --save_buffer --frame_interval 10 --foreground_masking
+
+
+```
+
+#### Max Pooling 
+
+With `--frame_extraction_method first_max_frames` to obtain first 10 steps 
+```bash 
+CUDA_VISIBLE_DEVICES=7 CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/inference/gen3c_batch_images.py     --checkpoint_dir checkpoints     --input_videos_dir /home/dusan001/generation_and_reconstruction     --input_videos_pattern bg_arena.mp4     --output_images_dir results_from_batches     --save_as_video     --frame_extraction_method first_max_frames --step_size --foreground_masking
+
+```
+
 
 #### Multi-GPU (8 GPUs)
 ```bash
@@ -166,6 +228,7 @@ CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/infer
     --guidance 1
 ```
 
+
 #### Multi-GPU (8 GPUs)
 ```bash
 NUM_GPUS=8
@@ -176,6 +239,7 @@ CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) torchrun --nproc_per_node=${NUM_GPUS} 
     --num_gpus ${NUM_GPUS} \
     --guidance 1
 ```
+
 
 ## Gallery
 

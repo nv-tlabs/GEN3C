@@ -15,6 +15,7 @@
 
 import torch
 from einops import rearrange
+from tqdm import tqdm
 
 from cosmos_predict1.diffusion.inference.forward_warp_utils_pytorch import (
     forward_warp,
@@ -43,6 +44,16 @@ class Cache3D_Base:
         input_image: Tensor with varying dimensions.
         input_format: List of dimension labels corresponding to input_image's dimensions.
                       E.g., ['B', 'C', 'H', 'W'], ['B', 'F', 'C', 'H', 'W'], etc.
+
+        Description of dimensions:
+        B = batch size. Usually 1
+        F = frame count. For video inputs, this is the number of frames in time.
+        N = number of views or buffers. For example, in a multi-view setup, this could be the number of cameras.
+        V = not sure yet.
+        C = number of channels in the image (e.g., RGB has 3 channels).
+        H = height of the image.
+        W = width of the image.
+
         """
         self.weight_dtype = weight_dtype
         self.is_depth = is_depth
@@ -108,6 +119,7 @@ class Cache3D_Base:
             input_depth = torch.clamp(input_depth, min=0, max=100)
             if weight_dtype == torch.float16:
                 input_depth = torch.clamp(input_depth, max=70)
+            # import pdb; pdb.set_trace()  # Debugging breakpoint
             self.input_points = (
                 self._compute_input_points(
                     input_depth.reshape(-1, 1, H, W),
@@ -154,7 +166,11 @@ class Cache3D_Base:
         B, F, N, V, C, H, W = self.input_image.shape
         assert bs == B
 
+
+        # (B*F*N), 4, 4
         target_w2cs = target_w2cs.reshape(B, F_target, 1, 4, 4).expand(B, F_target, N, 4, 4).reshape(-1, 4, 4)
+
+        # (B*F*N), 3, 3
         target_intrinsics = (
             target_intrinsics.reshape(B, F_target, 1, 3, 3).expand(B, F_target, N, 3, 3).reshape(-1, 3, 3)
         )
@@ -171,21 +187,30 @@ class Cache3D_Base:
         ) if self.boundary_mask is not None else None
 
         if first_images.shape[1] == 1:
-            warp_chunk_size = 2
+            # warp_chunk_size = 2 # number of images to warp at once. In this case 2. These 2 images are independent from each other!!!
+            warp_chunk_size = 32 # number of images to warp at once. In this case 2. These 2 images are independent from each other!!!
             rendered_warp_images = []
             rendered_warp_masks = []
             rendered_warp_depth = []
             rendered_warped_flows = []
+            
 
             first_images = first_images.squeeze(1)
             first_points = first_points.squeeze(1)
             first_masks = first_masks.squeeze(1) if first_masks is not None else None
-            for i in range(0, first_images.shape[0], warp_chunk_size):
+
+            # Render for all target w2cs/intrinsics 
+            for i in tqdm(range(0, first_images.shape[0], warp_chunk_size), desc="Rendering cache"):
+
+                #  warp_chunk_size 
+                # Number of images to warp at once. In this case 2. 
+                # These 2 images are independent from each other!!!
+
                 (
-                    rendered_warp_images_chunk,
-                    rendered_warp_masks_chunk,
-                    rendered_warp_depth_chunk,
-                    rendered_warped_flows_chunk,
+                    rendered_warp_images_chunk, # [warp_chunk_size=2, 3, H, W]
+                    rendered_warp_masks_chunk, # [warp_chunk_size=2, 1, H, W]
+                    rendered_warp_depth_chunk, # [warp_chunk_size=2, H, W] if render_depth else None
+                    rendered_warped_flows_chunk, # [warp_chunk_size=2, 2, H, W]
                 ) = forward_warp(
                     first_images[i : i + warp_chunk_size],
                     mask1=first_masks[i : i + warp_chunk_size] if first_masks is not None else None,
@@ -274,6 +299,7 @@ class Cache3D_Buffer(Cache3D_Base):
         new_image = new_image.cpu()
 
         if self.filter_points_threshold < 1.0:
+            print("Applying depth filtering with threshold:", self.filter_points_threshold)
             B, F, N, V, C, H, W = self.input_image.shape
             new_depth = new_depth.reshape(-1, 1, H, W)
             depth_mask = reliable_depth_mask_range_batch(new_depth, ratio_thresh=self.filter_points_threshold).reshape(B, 1, H, W)
@@ -285,6 +311,7 @@ class Cache3D_Buffer(Cache3D_Base):
             new_mask = new_mask.cpu()
         if self.frame_buffer_max > 1:  # newest frame first
             if self.input_image.shape[2] < self.frame_buffer_max:
+                # import pdb; pdb.set_trace()
                 self.input_image = torch.cat([new_image[:, None, None, None], self.input_image], 2)
                 self.input_points = torch.cat([new_points[:, None, None, None], self.input_points], 2)
                 if self.input_mask is not None:
@@ -301,8 +328,8 @@ class Cache3D_Buffer(Cache3D_Base):
 
     def render_cache(
         self,
-        target_w2cs,
-        target_intrinsics,
+        target_w2cs, # [B, F, 4, 4] F=121
+        target_intrinsics, # [B, F, 3, 3]
         render_depth: bool = False,
         start_frame_idx: int = 0,  # For consistency with Cache4D
     ):

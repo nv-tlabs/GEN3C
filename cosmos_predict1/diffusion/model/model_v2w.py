@@ -18,6 +18,7 @@ from typing import Optional
 import torch
 from megatron.core import parallel_state
 from torch import Tensor
+from tqdm import tqdm
 
 from cosmos_predict1.diffusion.conditioner import VideoExtendCondition
 from cosmos_predict1.diffusion.model.model_t2w import DiffusionT2WModel, broadcast_condition
@@ -62,9 +63,10 @@ class DiffusionV2WModel(DiffusionT2WModel):
         condition_video_indicator[:, :, :num_condition_t] += 1.0
 
         condition.gt_latent = latent_state
+        # Number of frames in the condition region, giving mask to indicate which of latent frames are actually condition region
         condition.condition_video_indicator = condition_video_indicator
 
-        B, C, T, H, W = latent_state.shape
+        B, C, T, H, W = latent_state.shape # it's not C, it's latent dimension not C=3
         # Create additional input_mask channel, this will be concatenated to the input of the network
         # See design doc section (Implementation detail A.1 and A.2) for visualization
         ones_padding = torch.ones((B, 1, T, H, W), dtype=latent_state.dtype, device=latent_state.device)
@@ -114,6 +116,12 @@ class DiffusionV2WModel(DiffusionT2WModel):
             Generated video samples tensor
         """
         assert condition_latent is not None, "condition_latent should be provided"
+
+        # import pdb; pdb.set_trace()
+
+        # Prepare ground truth and warped latents
+        # Condition has warped latents too
+        # uncondition has zero latents in VideoExtendCondition.condition_video_pose instead
         condition, uncondition = self._get_conditions(
             data_batch, is_negative_prompt, condition_latent, num_condition_t, add_input_frames_guidance
         )
@@ -127,7 +135,7 @@ class DiffusionV2WModel(DiffusionT2WModel):
         if to_cp:
             xt = split_inputs_cp(x=xt, seq_dim=2, cp_group=self.net.cp_group)
 
-        for t in self.scheduler.timesteps:
+        for t in tqdm(self.scheduler.timesteps, desc="Denoising steps"):
             self.scheduler._init_step_index(t)
             sigma = self.scheduler.sigmas[self.scheduler.step_index].to(**self.tensor_kwargs)
             # Form new noise from latent
@@ -139,7 +147,10 @@ class DiffusionV2WModel(DiffusionT2WModel):
             new_xt_scaled = self.scheduler.scale_model_input(new_xt, timestep=t)
             # Predict the noise residual
             t = t.to(**self.tensor_kwargs)
+
+            # Output for condition (with warped latentsm with gt_latents)
             net_output_cond = self.net(x=new_xt_scaled, timesteps=t, **condition.to_dict())
+            # Output for uncondition (without warped latents, only gt latents)
             net_output_uncond = self.net(x=new_xt_scaled, timesteps=t, **uncondition.to_dict())
             net_output = net_output_cond + guidance * (net_output_cond - net_output_uncond)
             # Replace indicated output with latent
@@ -243,6 +254,8 @@ class DiffusionV2WModel(DiffusionT2WModel):
             indicator = split_inputs_cp(indicator, seq_dim=2, cp_group=self.net.cp_group)
             augment_latent_unscaled = split_inputs_cp(augment_latent_unscaled, seq_dim=2, cp_group=self.net.cp_group)
         # Compose the model input with condition region (augment_latent) and generation region (noise_x)
+
+        # import pdb; pdb.set_trace()
         new_xt = indicator * augment_latent_unscaled + (1 - indicator) * xt
         return new_xt, latent, indicator
 

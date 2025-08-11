@@ -227,6 +227,8 @@ class GeneralDIT(nn.Module):
             self.model_channels,
         )
         in_channels = in_channels + 1 if concat_padding_mask else in_channels
+
+
         self.x_embedder = PatchEmbed(
             spatial_patch_size=patch_spatial,
             temporal_patch_size=patch_temporal,
@@ -308,6 +310,8 @@ class GeneralDIT(nn.Module):
             x_B_C_T_H_W = torch.cat(
                 [x_B_C_T_H_W, padding_mask.unsqueeze(1).repeat(1, 1, x_B_C_T_H_W.shape[2], 1, 1)], dim=1
             )
+
+        # import pdb; pdb.set_trace()
         x_B_T_H_W_D = self.x_embedder(x_B_C_T_H_W)
 
         if self.extra_per_block_abs_pos_emb:
@@ -476,7 +480,7 @@ class GeneralDIT(nn.Module):
             latent_condition=latent_condition,
             latent_condition_sigma=latent_condition_sigma,
             condition_video_augment_sigma=condition_video_augment_sigma,
-            **kwargs,
+                **kwargs,
         )
         x, affline_emb_B_D, crossattn_emb, crossattn_mask, rope_emb_L_1_1_D, adaln_lora_B_3D, original_shape = (
             inputs["x"],

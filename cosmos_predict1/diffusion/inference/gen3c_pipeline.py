@@ -226,12 +226,13 @@ class Gen3cPipeline(DiffusionVideo2WorldGenerationPipeline):
 
     def _run_model(
         self,
-        embedding: torch.Tensor,
+        embedding: torch.Tensor, # input text most likely
         condition_latent: torch.Tensor,
-        rendered_warp_images: torch.Tensor,
-        rendered_warp_masks: torch.Tensor,
+        rendered_warp_images: torch.Tensor, # original shapes, not downsampled
+        rendered_warp_masks: torch.Tensor, # original shapes, not downsampled
         negative_prompt_embedding: torch.Tensor | None = None,
     ) -> Any:
+        # import pdb; pdb.set_trace()
         data_batch, state_shape = get_video_batch(
             model=self.model,
             prompt_embedding=embedding,
@@ -247,12 +248,13 @@ class Gen3cPipeline(DiffusionVideo2WorldGenerationPipeline):
         video = generate_world_from_video(
             model=self.model,
             state_shape=self.model.state_shape,
+            # state_shape=state_shape, # attempted by Dusan, got 65!=64 mismatching, ridiculous
             is_negative_prompt=True,
             data_batch=data_batch,
             guidance=self.guidance,
             num_steps=self.num_steps,
             seed=self.seed,
-            condition_latent=condition_latent,
+            condition_latent=condition_latent, # [B, 16, T / 8, H / 8, W / 8]
             num_input_frames=self.num_input_frames,
         )
 

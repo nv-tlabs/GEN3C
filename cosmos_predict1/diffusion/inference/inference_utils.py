@@ -748,10 +748,12 @@ def create_condition_latent_from_input_frames(
     if hasattr(model, "n_views"):
         encode_input_frames = einops.rearrange(encode_input_frames, "(B V) C T H W -> B C (V T) H W", V=model.n_views)
     if model.config.conditioner.video_cond_bool.condition_location == "first_and_last_1":
+        # moves from [B, C, T, H, W] to [B, 16, T/8, H/8, W/8] shape
         latent1 = model.encode(encode_input_frames[:, :, :num_frames_encode])  # BCTHW
         latent2 = model.encode(encode_input_frames[:, :, num_frames_encode:])
         latent = torch.cat([latent1, latent2], dim=2)  # BCTHW
     else:
+        # moves from [B, C, T, H, W] to [B, 16, T/8, H/8, W/8] shape
         latent = model.encode(encode_input_frames)
     return latent, encode_input_frames
 
@@ -833,7 +835,12 @@ def get_condition_latent(
             model, num_of_latent_condition, downsample_factor=model.tokenizer.temporal_compression_factor
         )
 
-        condition_latent, _ = create_condition_latent_from_input_frames(model, curr_input_frames, num_frames_condition)
+        condition_latent, _condition_input_frames = create_condition_latent_from_input_frames(model, curr_input_frames, num_frames_condition)
+
+        print(f"condition_latent shape: {condition_latent.shape}, _condition_input_frames shape: {_condition_input_frames.shape}")
+        print("curr_input_frames shape: ", curr_input_frames.shape)
+        print(f"num_of_latent_condition: {num_of_latent_condition}, num_frames_condition: {num_frames_condition}")
+
         condition_latent = condition_latent.to(torch.bfloat16)
         return condition_latent
 

@@ -18,6 +18,11 @@ from cosmos_predict1.utils.io import save_video
 from cosmos_predict1.diffusion.inference.cache_3d import Cache3D_Buffer, Cache4D
 import torch.nn.functional as F
 
+from typing import List, Tuple, Literal, Optional
+from tqdm import tqdm
+import cv2
+from PIL import Image
+
 
 def create_parser():
     return create_parser_base()
@@ -51,6 +56,80 @@ def resize_intrinsics(intrinsics: np.ndarray | torch.Tensor,
         intrinsics_copy[:, 1, -1] = intrinsics_copy[:, 1, -1] - (new_size[0] - crop_size[0]) / 2
     return intrinsics_copy
 
+def concatenate_image_lists(
+    first_image_list: List[Image.Image],
+    second_image_list: List[Image.Image],
+    direction: Literal["horizontal", "vertical"] = "horizontal",
+    convert_mode: Optional[str] = None,
+    background_color: Optional[Tuple[int, int, int, int]] = None,
+) -> List[Image.Image]:
+    """
+    Concatenate two equal-length lists of PIL Images pairwise, either horizontally or vertically.
+
+    Parameters
+    ----------
+    first_image_list:
+        List of images to appear on the left (for horizontal) or top (for vertical).
+    second_image_list:
+        List of images to appear on the right (for horizontal) or bottom (for vertical).
+    direction:
+        "horizontal" or "vertical".
+    convert_mode:
+        If not None, all images are converted to this mode before concatenation (e.g., "RGB").
+        If None, the mode of the corresponding first_image_list image is used for that pair.
+    background_color:
+        Optional fill color when padding the larger dimension. If None, uses black (or transparent if mode supports alpha).
+
+    Returns
+    -------
+    List[Image.Image] of concatenated images.
+    """
+    assert len(first_image_list) == len(second_image_list), "Image lists must be same length"
+
+    concatenated_images: List[Image.Image] = []
+
+    for first_image, second_image in zip(first_image_list, second_image_list):
+        # Normalize modes if requested
+        if convert_mode is not None:
+            if first_image.mode != convert_mode:
+                first_image = first_image.convert(convert_mode)
+            if second_image.mode != convert_mode:
+                second_image = second_image.convert(convert_mode)
+            output_mode = convert_mode
+        else:
+            # Use the mode of first_image; convert the second if needed
+            output_mode = first_image.mode
+            if second_image.mode != output_mode:
+                second_image = second_image.convert(output_mode)
+
+        if direction == "horizontal":
+            common_height = max(first_image.height, second_image.height)
+            total_width = first_image.width + second_image.width
+            if background_color is None:
+                if "A" in output_mode:  # crude alpha presence check
+                    background_color = (0, 0, 0, 0)
+                else:
+                    background_color = (0, 0, 0)
+            canvas = Image.new(mode=output_mode, size=(total_width, common_height), color=background_color)
+            canvas.paste(first_image, (0, 0))
+            canvas.paste(second_image, (first_image.width, 0))
+        elif direction == "vertical":
+            common_width = max(first_image.width, second_image.width)
+            total_height = first_image.height + second_image.height
+            if background_color is None:
+                if "A" in output_mode:
+                    background_color = (0, 0, 0, 0)
+                else:
+                    background_color = (0, 0, 0)
+            canvas = Image.new(mode=output_mode, size=(common_width, total_height), color=background_color)
+            canvas.paste(first_image, (0, 0))
+            canvas.paste(second_image, (0, first_image.height))
+        else:
+            raise ValueError("direction must be 'horizontal' or 'vertical'")
+
+        concatenated_images.append(canvas)
+
+    return concatenated_images
 
 class Gen3cPersistentModel():
     """Helper class to run Gen3C image-to-video or video-to-video inference.
@@ -122,7 +201,7 @@ class Gen3cPersistentModel():
         self.frame_buffer_max = pipeline.model.frame_buffer_max
         self.generator = torch.Generator(device=device).manual_seed(args.seed)
         self.sample_n_frames = pipeline.model.chunk_size
-        self.moge_model = MoGeModel.from_pretrained("Ruicheng/moge-vitl").to(device)
+        self.moge_model = None if hasattr(args, "use_vggt") else  MoGeModel.from_pretrained("Ruicheng/moge-vitl").to(device) 
         self.pipeline = pipeline
         self.device = device
         self.device_with_rank = device_with_rank(self.device)
@@ -132,6 +211,7 @@ class Gen3cPersistentModel():
         # User-provided seeding image, after pre-processing.
         # Shape [B, C, T, H, W], type float, range [-1, 1].
         self.seeding_image: torch.Tensor | None = None
+        self.seed_view_idx = getattr(args, "seed_view_idx", 0)
 
 
     @torch.no_grad()
@@ -142,7 +222,31 @@ class Gen3cPersistentModel():
                                focal_lengths_np: np.ndarray,
                                principal_point_rel_np: np.ndarray,
                                resolutions: np.ndarray,
-                               masks_np: np.ndarray | None = None):
+                               masks_np: np.ndarray | None = None,
+                               input_format: List = ["F", "C", "H", "W"],
+                               treat_multi_inputs_as_views=False) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Seed the model with provided values.
+        Args:
+            images_np: Input images as numpy array of shape (B, H, W, C).
+            depths_np: Optional depth maps as numpy array of shape (B, H, W).
+            world_to_cameras_np: World-to-camera matrices as numpy array of shape (B,
+                4, 4).
+            focal_lengths_np: Focal lengths as numpy array of shape (B, 2).
+            principal_point_rel_np: Relative principal points as numpy array of shape
+                (B, 2). I.e. if the principal point is at (cx, cy) in the image,
+                  then relative position is (cx / W, cy / H), so range goes from [0,1]. 
+            resolutions: Resolutions as numpy array of shape (B, 2).
+            masks_np: Optional masks as numpy array of shape (B, H, W).
+        Returns:
+            Tuple of estimated world-to-camera matrices, focal lengths, relative
+            principal points, and working resolutions.
+        Raises:
+            AssertionError: If input shapes are not as expected.
+            NotImplementedError: If seeding from a single image is attempted without
+                providing depth values.
+                        
+        """
         import torchvision.transforms.functional as transforms_F
 
         # Check inputs
@@ -156,7 +260,8 @@ class Gen3cPersistentModel():
         assert (masks_np is None) or (masks_np.shape == images_np.shape[:-1])
 
 
-        if n == 1:
+        # if n == 1:
+        if False:
             # TODO: allow user to provide depths, extrinsics and intrinsics
             assert depths_np is None, "Not supported yet: directly providing pre-estimated depth values along with a single image."
 
@@ -230,22 +335,57 @@ class Gen3cPersistentModel():
             intrinsics_b33_np[:, 2, 2] = 1.0
             intrinsics_b33 = torch.from_numpy(intrinsics_b33_np).to(self.device_with_rank)
 
-            self.cache = Cache4D(
-                input_image=image_bchw_float.clone(), # [B, C, H, W]
-                input_depth=depth_b1hw,               # [B, 1, H, W]
-                input_mask=mask_b1hw,                 # [B, 1, H, W]
-                input_w2c=initial_w2c_b44,            # [B, 4, 4]
-                input_intrinsics=intrinsics_b33,      # [B, 3, 3]
-                filter_points_threshold=self.args.filter_points_threshold,
-                foreground_masking=self.args.foreground_masking,
-                input_format=["F", "C", "H", "W"],
-            )
 
-            # Return the given extrinsics and intrinsics in the same format as the input
-            seeding_image = image_bchw_float
-            estimated_w2c_b44_np = world_to_cameras_np
-            estimated_focal_lengths_b2_np = focal_lengths_np
-            estimated_principal_point_rel_b2_np = principal_point_rel_np
+            if treat_multi_inputs_as_views:
+                # --------------------------------------------------------------
+                # Treat N inputs as V views of a static scene.
+                # Introduce explicit batch dim (B=1), collapse N->V.
+                # --------------------------------------------------------------
+                image_bvchw_float = image_bchw_float.unsqueeze(0)              # [1, V, C, H, W]
+                depth_bv1hw       = depth_b1hw.unsqueeze(0)                    # [1, V, 1, H, W]
+                mask_bv1hw        = mask_b1hw.unsqueeze(0) if mask_b1hw is not None else None
+                initial_w2c_bv44  = initial_w2c_b44.unsqueeze(0)               # [1, V, 4, 4]
+                intrinsics_bv33   = intrinsics_b33.unsqueeze(0)                # [1, V, 3, 3]
+
+                self.cache = Cache4D(
+                    input_image=image_bvchw_float.clone(),
+                    input_depth=depth_bv1hw,
+                    input_mask=mask_bv1hw,
+                    input_w2c=initial_w2c_bv44,
+                    input_intrinsics=intrinsics_bv33,
+                    filter_points_threshold=self.args.filter_points_threshold,
+                    foreground_masking=self.args.foreground_masking,
+                    input_format=["B", "N", "C", "H", "W"],  # <-- key change
+                    # input_format=["F", "V", "C", "H", "W"],  # <-- key change
+                )
+
+                # diffusion seed image: pick one view
+                seed_idx = int(max(0, min(self.seed_view_idx, image_bvchw_float.shape[1] - 1)))
+                seeding_image = image_bvchw_float[:, seed_idx]                 # [1, C, H, W]
+
+                # return per-view camera params
+                estimated_w2c_b44_np = world_to_cameras_np
+                estimated_focal_lengths_b2_np = focal_lengths_np
+                estimated_principal_point_rel_b2_np = principal_point_rel_np
+
+            else:
+                self.cache = Cache4D(
+                    input_image=image_bchw_float.clone(), # [B, C, H, W]
+                    input_depth=depth_b1hw,               # [B, 1, H, W]
+                    input_mask=mask_b1hw,                 # [B, 1, H, W]
+                    input_w2c=initial_w2c_b44,            # [B, 4, 4]
+                    input_intrinsics=intrinsics_b33,      # [B, 3, 3]
+                    filter_points_threshold=self.args.filter_points_threshold,
+                    foreground_masking=self.args.foreground_masking,
+                    # input_format=["F", "C", "H", "W"],
+                    input_format=input_format,  # ["F", "C", "H", "W"]
+                )
+
+                # Return the given extrinsics and intrinsics in the same format as the input
+                seeding_image = image_bchw_float
+                estimated_w2c_b44_np = world_to_cameras_np
+                estimated_focal_lengths_b2_np = focal_lengths_np
+                estimated_principal_point_rel_b2_np = principal_point_rel_np
 
         # Resize seeding image to match the desired resolution.
         if (seeding_image.shape[2] != self.H) or (seeding_image.shape[3] != self.W):
@@ -294,10 +434,13 @@ class Gen3cPersistentModel():
         # Note: the inference server already adjusted intrinsics to match our
         # inference resolution (self.W, self.H), so this call is just to make sure
         # that all tensors have the right shape, etc.
+
+        # import pdb; pdb.set_trace()  # Debugging breakpoint
         view_cameras_w2cs, view_camera_intrinsics = self.prepare_camera_for_inference(
             view_cameras_w2cs, view_camera_intrinsics,
             old_size=(self.H, self.W), new_size=(self.H, self.W)
         )
+        # import pdb; pdb.set_trace()
 
         n_frames_total = view_cameras_w2cs.shape[1]
         num_ar_iterations = (n_frames_total - overlap_frames) // (self.sample_n_frames - overlap_frames)
@@ -305,11 +448,139 @@ class Gen3cPersistentModel():
 
         # Note: camera trajectory is given by the user, no need to generate it.
         log.info(f"Generating frames 0 - {self.sample_n_frames} (out of {n_frames_total} total)...")
+
+        # import pdb; pdb.set_trace()
         rendered_warp_images, rendered_warp_masks = self.cache.render_cache(
             view_cameras_w2cs[:, 0:self.sample_n_frames],
             view_camera_intrinsics[:, 0:self.sample_n_frames],
             start_frame_idx=0,
         )
+
+
+        #  Save video of rendered warps
+        # outputs/rendered_warps
+        rendered_warps_folder = self.args.video_save_folder + "/rendered_warps"
+        os.makedirs(rendered_warps_folder, exist_ok=True)
+
+        # def save_rendered_warp_images(rendered_warp_images: torch.Tensor):
+
+        trajectory_length = rendered_warp_images.shape[1]
+        buffer_length = rendered_warp_images.shape[2]
+
+
+        final_image_list = []
+
+
+        import pdb; pdb.set_trace()
+        for j in tqdm(range(buffer_length), desc="Saving rendered warps as video"):
+            rendered_warp_image = rendered_warp_images[:, :, j, ...].cpu().numpy().squeeze(0)
+
+            # import pdb; pdb.set_trace()
+            rendered_warp_image = (rendered_warp_image * 0.5 + 0.5) * 255.0
+            rendered_warp_image = rendered_warp_image.astype(np.uint8)
+            rendered_warp_image = np.transpose(rendered_warp_image, (0, 2, 3, 1))
+
+            # Save each view as a separate video
+            view_video_path = os.path.join(rendered_warps_folder, f"view_{j:04d}.mp4")
+            log.info(f"Saving rendered warp view {j:04d} to {view_video_path}")
+            save_video(
+                video=rendered_warp_image,
+                fps=self.pipeline.fps,
+                video_save_path=view_video_path,
+                video_save_quality=5,
+                H=self.H,
+                W=self.W,
+            )
+
+            final_image_list.append([Image.fromarray(rendered_warp_image[i]) for i in range(trajectory_length)])
+
+
+        # import pdb; pdb.set_trace()  # Debugging breakpoint
+
+        log.info("Printing buffer length of input images")
+        input_images = []
+        for i in tqdm(range(buffer_length), desc="Saving input images"):
+            input_image = self.cache.input_image[0,0,i, 0].cpu().numpy()
+            input_image = (input_image * 0.5 + 0.5) * 255.0
+            input_image = input_image.astype(np.uint8)
+            input_image = input_image.transpose(1, 2, 0)
+            input_image_pil = Image.fromarray(input_image)
+            input_image_pil.save(os.path.join(rendered_warps_folder, f"input_image_{i:04d}.png"))
+            log.info(f"Saved input image {i:04d} to {os.path.join(rendered_warps_folder, f'input_image_{i:04d}.png')}")
+            input_images.append(input_image_pil)
+
+
+        # import pdb; pdb.set_trace()  # Debugging breakpoint
+        # # Save the input images as 2x4 grid
+        # vertical_images = concatenate_image_lists(
+        #     # first_image_list=input_images[:4],
+        #     first_image_list=input_images[0:8:2],
+        #     # second_image_list=input_images[4:8],
+        #     second_image_list=input_images[1:8:2],
+        #     direction="vertical",
+        #     convert_mode="RGB",
+        #     background_color=(0, 0, 0, 0)  # Transparent background
+        # )
+
+        # # Concatenate them horizontally now
+        # for i in range(3):
+        #     horizontal_images_top = concatenate_image_lists(
+        #         first_image_list=vertical_images,
+        #         second_image_list=input_images[i*2+2:i*2+4],
+        #         direction="horizontal",
+        #         convert_mode="RGB",
+        #         background_color=(0, 0, 0, 0)  # Transparent background
+        #     )
+        # # Save the top 2x4 grid
+        # horizontal_images_top.save(os.path.join(rendered_warps_folder, "input_images_top_2x4.png"))
+
+        
+
+
+
+        if self.args.frame_extraction_method != "first":
+            horizontal_list_top = final_image_list[0]
+
+
+        
+
+            for i in range(3):
+                horizontal_list_top = concatenate_image_lists(    first_image_list=horizontal_list_top,
+                    second_image_list=final_image_list[i+1],
+                    direction="horizontal",
+                    convert_mode="RGB",
+                    background_color=(0, 0, 0, 0)  # Transparent background
+                )
+
+            horizontal_list_bottom = final_image_list[3]
+
+            for i in range(3):
+                horizontal_list_bottom = concatenate_image_lists(
+                    first_image_list=horizontal_list_bottom,
+                    second_image_list=final_image_list[i+3+1],
+                    direction="horizontal",
+                    convert_mode="RGB",
+                    background_color=(0, 0, 0, 0)  # Transparent background
+                )
+
+
+            final_concatenated_video_top_bottom_2x4 = concatenate_image_lists(
+                first_image_list=horizontal_list_top,
+                second_image_list=horizontal_list_bottom,
+                direction="vertical",
+                convert_mode="RGB",
+                background_color=(0, 0, 0, 0)  # Transparent background
+            )
+
+            save_video(
+                video=[np.array(img) for img in final_concatenated_video_top_bottom_2x4],
+                fps=self.pipeline.fps,
+                video_save_path=os.path.join(rendered_warps_folder, "rendered_warps_2x4.mp4"),
+                video_save_quality=video_save_quality,
+                H=self.H,
+                W=self.W,
+            )
+            log.info(f"Saved rendered warps video to {os.path.join(rendered_warps_folder, 'rendered_warps_2x4.mp4')}")
 
         all_rendered_warps = []
         all_predicted_depth = []
@@ -327,6 +598,7 @@ class Gen3cPersistentModel():
         if cache_is_multiframe:
             starting_frame = starting_frame[0].unsqueeze(0)
 
+        # a
         generated_output = self.pipeline.generate(
             prompt=current_prompt,
             image_path=starting_frame,
@@ -528,7 +800,7 @@ class Gen3cPersistentModel():
 
         view_camera_intrinsics = resize_intrinsics(view_camera_intrinsics, old_size, new_size)
         view_camera_intrinsics = view_camera_intrinsics.unsqueeze(dim=0)
-        assert view_camera_intrinsics.ndim == 4
+        assert view_camera_intrinsics.ndim == 4, print(f"Invalid view_camera_intrinsics shape: {view_camera_intrinsics.shape}")
 
         return view_cameras.to(device_with_rank(self.device_with_rank)), \
                view_camera_intrinsics.to(device_with_rank(self.device_with_rank))
