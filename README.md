@@ -41,6 +41,9 @@ For business inquiries, please visit our website and submit the form: [NVIDIA Re
 For any other questions related to the model, please contact Xuanchi, Tianchang or Jun.
 
 ## News
+
+- 2025-08-12 We’ve just released [ViPE](https://github.com/nv-tlabs/vipe) — a data annotation pipeline for jointly predicting depth and camera pose from video. ViPE powers both the training and testing stages of GEN3C!
+
 - 2025-06-06 Code and model released! In a future update, we plan to include the pipeline for jointly predicting depth and camera pose from video, as well as a driving-finetuned model. Stay tuned!
 
 ## Installation
@@ -149,7 +152,7 @@ Maximum observed memory during inference with full offloading: ~43GB. Note: Memo
 
 
 ### Example 2: Video to Video Generation
-For video input, GEN3C requires additional depth information, camera intrinsics, and extrinsics. These can be obtained using your choice of SLAM packages. For testing purposes, we provide example data.
+For video input, GEN3C requires additional depth information, camera intrinsics, and extrinsics. These can be obtained using your choice of SLAM packages. We recommend using [ViPE](https://github.com/nv-tlabs/vipe). For testing purposes, we provide example data.
 
 First, you need to download the test samples:
 ```bash
