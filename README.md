@@ -103,50 +103,12 @@ CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/infer
     --offload_guardrail_models
 ```
 
-```bash
 
-CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/inference/gen3c_single_image.py \
-    --checkpoint_dir checkpoints \
-    --input_image_path /home/dusan001/generation_and_reconstruction/pantheon_seva_output/pantheon_576.jpg \
-    --video_save_name pantheon \
-    --guidance 1 \
-    --foreground_masking \
-    --offload_diffusion_transformer \
-    --offload_tokenizer \
-    --offload_text_encoder_model \
-    --offload_prompt_upsampler \
-    --offload_guardrail_models \
-    --save_buffer
-```
+#### Static multiple view support with max pooling 
+
+This is a walkaround support for reconstructing a scene from multiple views. Currently only single view is supported. The rest will be in [README_MULTIVIEW.md](README_MULTIVIEW.md).
 
 
-### Batch by Dusan
-
-
-```bash
-CUDA_VISIBLE_DEVICES=1 CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/inference/gen3c_batch_images.py \
-    --checkpoint_dir checkpoints \
-    --input_videos_dir /home/dusan001/generation_and_reconstruction \
-    --input_videos_pattern pantheon_stable_virtual_camera.mp4 \
-    --output_images_dir results_from_batches \
-    --save_as_video \
-    --frame_extraction_method all \
-    --foreground_masking
-    # --max_frames # max frames frames to extract when loading all images
-    
-## trying interval
-CUDA_VISIBLE_DEVICES=1 CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/inference/gen3c_batch_images.py     --checkpoint_dir checkpoints     --input_videos_dir /home/dusan001/generation_and_reconstruction     --input_videos_pattern pantheon_stable_virtual_camera.mp4     --output_images_dir results_from_batches     --save_as_video     --frame_extraction_method interval  --save_buffer --frame_interval 10 --foreground_masking
-
-
-```
-
-#### Max Pooling 
-
-With `--frame_extraction_method first_max_frames` to obtain first 10 steps 
-```bash 
-CUDA_VISIBLE_DEVICES=7 CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/inference/gen3c_batch_images.py     --checkpoint_dir checkpoints     --input_videos_dir /home/dusan001/generation_and_reconstruction     --input_videos_pattern bg_arena.mp4     --output_images_dir results_from_batches     --save_as_video     --frame_extraction_method first_max_frames --step_size --foreground_masking
-
-```
 
 
 #### Multi-GPU (8 GPUs)

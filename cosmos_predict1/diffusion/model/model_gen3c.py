@@ -81,6 +81,7 @@ class DiffusionGen3CModel(DiffusionV2WModel):
         gives slightly sharper results than per-channel max pooling or simple averaging.”
 
         """
+        # import pdb; pdb.set_trace()  # Debugging breakpoint
 
         assert condition_state.dim() == 6
         condition_state_mask = (condition_state_mask * 2 - 1).repeat(1, 1, 1, 3, 1, 1)
@@ -146,81 +147,6 @@ class DiffusionGen3CModel(DiffusionV2WModel):
         latent_condition_B_L_Tl_Hl_Wl = torch.cat(latent_condition, dim=1)
 
         return latent_condition_B_L_Tl_Hl_Wl # torch.Size([1, 64, 16, 88, 160]) # [B, L, Tl, Hl, Wl] where L = 2 * frame_buffer_max * Cl
-
-
-
-
-    # def encode_warped_frames(
-    #     self,
-    #     condition_state: torch.Tensor,          # (B, T, V, 3, H, W)
-    #     condition_state_mask: torch.Tensor,     # (B, T, V, 3, H, W)
-    #     dtype: torch.dtype,
-    #     *,
-    #     spatial_kernel_size: int = 3            # 3 × 3 spatial window
-    # ) -> torch.Tensor:
-    #     """
-    #     1. Encode each of the V warped views → latent (Cl,Tl,Hl,Wl)
-    #     2. Fuse views with max over V (no spatial pooling yet)
-    #     3. **Spatial** max-pool on every Tl slice (stride 1, pad = k//2)
-    #     4. Pack into (B, 2*frame_buffer_max*Cl, Tl, Hl, Wl)
-    #     """
-
-    #     # --- preprocessing -------------------------------------------------
-    #     assert condition_state.dim() == 6, "expect (B,T,V,3,H,W)"
-    #     condition_state_mask = (condition_state_mask * 2 - 1).repeat(1, 1, 1, 3, 1, 1)
-
-    #     latent_video_per_view = []
-    #     latent_mask_per_view  = []
-
-    #     B, T, V, _, H, W = condition_state.shape
-
-    #     # --- 1) encode each view separately --------------------------------
-    #     for v in tqdm(range(V), desc="Encoding warped frames"):
-    #         rgb_B_C_T_H_W   = condition_state[:, :, v].permute(0, 2, 1, 3, 4).to(dtype)
-    #         mask_B_C_T_H_W  = condition_state_mask[:, :, v].permute(0, 2, 1, 3, 4).to(dtype)
-
-    #         latent_rgb   = self.encode(rgb_B_C_T_H_W).contiguous()   # (B,Cl,Tl,Hl,Wl)
-    #         latent_mask  = self.encode(mask_B_C_T_H_W).contiguous()
-
-    #         latent_video_per_view.append(latent_rgb)
-    #         latent_mask_per_view.append(latent_mask)
-
-    #     # stack → (B,V,Cl,Tl,Hl,Wl)
-    #     latent_rgb_B_V_Cl_Tl_Hl_Wl  = torch.stack(latent_video_per_view, dim=1)
-    #     latent_mask_B_V_Cl_Tl_Hl_Wl = torch.stack(latent_mask_per_view,  dim=1)
-
-    #     # --- 2) fuse views with max over V ---------------------------------
-    #     fused_rgb_B_Cl_Tl_Hl_Wl  = torch.amax(latent_rgb_B_V_Cl_Tl_Hl_Wl,  dim=1)  # drop V
-    #     fused_mask_B_Cl_Tl_Hl_Wl = torch.amax(latent_mask_B_V_Cl_Tl_Hl_Wl, dim=1)
-
-    #     # --- 3) **spatial** max-pool on each (Tl) frame --------------------
-    #     #      reshape so each Tl slice is processed independently
-    #     B, Cl, Tl, Hl, Wl = fused_rgb_B_Cl_Tl_Hl_Wl.shape
-    #     fused_rgb_flat  = fused_rgb_B_Cl_Tl_Hl_Wl.permute(0, 2, 1, 3, 4).reshape(B * Tl, Cl, Hl, Wl)
-    #     fused_mask_flat = fused_mask_B_Cl_Tl_Hl_Wl.permute(0, 2, 1, 3, 4).reshape(B * Tl, Cl, Hl, Wl)
-
-    #     pad = spatial_kernel_size // 2
-    #     pooled_rgb_flat  = F.max_pool2d(fused_rgb_flat,  kernel_size=spatial_kernel_size,
-    #                                     stride=1, padding=pad)
-    #     pooled_mask_flat = F.max_pool2d(fused_mask_flat, kernel_size=spatial_kernel_size,
-    #                                     stride=1, padding=pad)
-
-    #     # restore (B,Cl,Tl,Hl,Wl)
-    #     pooled_rgb_B_Cl_Tl_Hl_Wl  = pooled_rgb_flat.view(B, Tl, Cl, Hl, Wl).permute(0, 2, 1, 3, 4)
-    #     pooled_mask_B_Cl_Tl_Hl_Wl = pooled_mask_flat.view(B, Tl, Cl, Hl, Wl).permute(0, 2, 1, 3, 4)
-
-    #     # --- 4) pack for the diffusion U-Net -------------------------------
-    #     latent_condition = [pooled_rgb_B_Cl_Tl_Hl_Wl, pooled_mask_B_Cl_Tl_Hl_Wl]
-
-    #     for _ in range(self.frame_buffer_max - 1):
-    #         latent_condition += [
-    #             torch.zeros_like(pooled_rgb_B_Cl_Tl_Hl_Wl),
-    #             torch.zeros_like(pooled_mask_B_Cl_Tl_Hl_Wl),
-    #         ]
-
-    #     L = 2 * self.frame_buffer_max * Cl
-    #     return torch.cat(latent_condition, dim=1)                     # (B,L,Tl,Hl,Wl)
-
 
 
 
