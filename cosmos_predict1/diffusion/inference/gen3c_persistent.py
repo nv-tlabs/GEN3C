@@ -201,7 +201,7 @@ class Gen3cPersistentModel():
         self.frame_buffer_max = pipeline.model.frame_buffer_max
         self.generator = torch.Generator(device=device).manual_seed(args.seed)
         self.sample_n_frames = pipeline.model.chunk_size
-        self.moge_model = None if hasattr(args, "use_vggt") else  MoGeModel.from_pretrained("Ruicheng/moge-vitl").to(device) 
+        self.moge_model = None if (hasattr(args, "use_vggt") and args.use_vggt == True) else  MoGeModel.from_pretrained("Ruicheng/moge-vitl").to(device) 
         self.pipeline = pipeline
         self.device = device
         self.device_with_rank = device_with_rank(self.device)
@@ -256,12 +256,15 @@ class Gen3cPersistentModel():
         assert focal_lengths_np.shape == (n, 2)
         assert principal_point_rel_np.shape == (n, 2)
         assert resolutions.shape == (n, 2)
+
         assert (depths_np is None) or (depths_np.shape == images_np.shape[:-1])
         assert (masks_np is None) or (masks_np.shape == images_np.shape[:-1])
 
 
         # if n == 1:
         if False:
+        # import pdb; pdb.set_trace()  # Debugging breakpoint
+        # if (self.moge_model is not None and n == 1):
             # TODO: allow user to provide depths, extrinsics and intrinsics
             assert depths_np is None, "Not supported yet: directly providing pre-estimated depth values along with a single image."
 
@@ -471,12 +474,17 @@ class Gen3cPersistentModel():
         final_image_list = []
 
 
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         for j in tqdm(range(buffer_length), desc="Saving rendered warps as video"):
             rendered_warp_image = rendered_warp_images[:, :, j, ...].cpu().numpy().squeeze(0)
 
             # import pdb; pdb.set_trace()
-            rendered_warp_image = (rendered_warp_image * 0.5 + 0.5) * 255.0
+
+                    # moge_image_b1chw_float = (moge_image_b1chw_float + 1) / 2.0
+
+            # rendered_warp_image = (rendered_warp_image * 0.5 + 0.5) * 255.0
+
+            rendered_warp_image = ((rendered_warp_image + 1) / 2.0) * 255.0
             rendered_warp_image = rendered_warp_image.astype(np.uint8)
             rendered_warp_image = np.transpose(rendered_warp_image, (0, 2, 3, 1))
 
@@ -501,10 +509,13 @@ class Gen3cPersistentModel():
         input_images = []
         for i in tqdm(range(buffer_length), desc="Saving input images"):
             input_image = self.cache.input_image[0,0,i, 0].cpu().numpy()
-            input_image = (input_image * 0.5 + 0.5) * 255.0
+            # input_image = (input_image * 0.5 + 0.5) * 255.0
+            input_image = ((input_image + 1) / 2.0) * 255.0
             input_image = input_image.astype(np.uint8)
             input_image = input_image.transpose(1, 2, 0)
             input_image_pil = Image.fromarray(input_image)
+
+            # import pdb; pdb.set_trace()  # Debugging breakpoint
             input_image_pil.save(os.path.join(rendered_warps_folder, f"input_image_{i:04d}.png"))
             log.info(f"Saved input image {i:04d} to {os.path.join(rendered_warps_folder, f'input_image_{i:04d}.png')}")
             input_images.append(input_image_pil)
@@ -544,6 +555,7 @@ class Gen3cPersistentModel():
 
         
 
+            # import pdb; pdb.set_trace()  # Debugging breakpoint
             for i in range(3):
                 horizontal_list_top = concatenate_image_lists(    first_image_list=horizontal_list_top,
                     second_image_list=final_image_list[i+1],
@@ -599,6 +611,8 @@ class Gen3cPersistentModel():
             starting_frame = starting_frame[0].unsqueeze(0)
 
         # a
+
+        # import pdb; pdb.set_trace()  # Debugging breakpoint
         generated_output = self.pipeline.generate(
             prompt=current_prompt,
             image_path=starting_frame,
@@ -674,6 +688,7 @@ class Gen3cPersistentModel():
                     self.cache.input_frame_count() - (end_frame_idx - start_frame_idx)
                 )
 
+            # import pdb; pdb.set_trace()  # Debugging breakpoint
             rendered_warp_images, rendered_warp_masks = self.cache.render_cache(
                 current_segment_w2cs,
                 current_segment_intrinsics,
@@ -737,13 +752,17 @@ class Gen3cPersistentModel():
                     full_rendered_warp_tensor = torch.cat(padded_t_list, dim=0)
 
                     T_total, _, C_dim, H_dim, W_dim = full_rendered_warp_tensor.shape
+
+                    import pdb; pdb.set_trace()  # Debugging breakpoint
+                    # if T_total == 
                     buffer_video_TCHnW = full_rendered_warp_tensor.permute(0, 2, 3, 1, 4)
                     buffer_video_TCHWstacked = buffer_video_TCHnW.contiguous().view(T_total, C_dim, H_dim, n_max * W_dim)
                     buffer_video_TCHWstacked = (buffer_video_TCHWstacked * 0.5 + 0.5) * 255.0
+                    # buffer_video_TCHWstacked = (buffer_video_TCHWstacked + 1) / 2.0 * 255.0
                     buffer_numpy_TCHWstacked = buffer_video_TCHWstacked.cpu().numpy().astype(np.uint8)
                     buffer_numpy_THWC = np.transpose(buffer_numpy_TCHWstacked, (0, 2, 3, 1))
 
-                    final_video_to_save = np.concatenate([buffer_numpy_THWC, final_video_to_save], axis=2)
+                    # final_video_to_save = np.concatenate([buffer_numpy_THWC, final_video_to_save], axis=2)
                     final_width = self.args.width * (1 + n_max)
                     log.info(f"Concatenating video with {n_max} warp buffers. Final video width will be {final_width}")
 

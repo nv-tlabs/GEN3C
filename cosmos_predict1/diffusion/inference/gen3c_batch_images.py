@@ -29,6 +29,7 @@ from PIL import Image
 
 from cosmos_predict1.diffusion.inference.gen3c_persistent import Gen3cPersistentModel, create_parser
 from cosmos_predict1.diffusion.inference.camera_utils import generate_camera_trajectory
+from cosmos_predict1.diffusion.inference.gen3c_single_image import _predict_moge_depth
 from cosmos_predict1.utils import log, misc
 from cosmos_predict1.utils.io import save_video
 
@@ -94,7 +95,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--output_fps",
         type=int,
-        default=24,
+        default=24, 
         help="FPS for output videos"
     )
     parser.add_argument(
@@ -196,6 +197,7 @@ def extract_frame_indices_from_video(video_path: str, args: argparse.Namespace) 
         log.warning(f"Video has no frames: {video_path}")
         return []
     
+    # import pdb; pdb.set_trace()  # Debugging breakpoint
     if args.frame_extraction_method == "first":
         return [0]
         # return [0, 1,2,3,4,5,6,7,8,9]
@@ -288,14 +290,26 @@ def generate_custom_trajectory(args: argparse.Namespace, device: str) -> tuple[t
     initial_w2c = torch.eye(4, dtype=torch.float32, device=device)
     
     # Create basic intrinsics
+
+    # (Pdb) initial_cam_intrinsics_for_traj
+    # tensor([[717.9374,   0.0000, 640.0000],
+    #         [  0.0000, 701.9832, 352.0000],
+    #         [  0.0000,   0.0000,   1.0000]], device='cuda:0')
+
     fx = fy = 800.0  # Focal length (can be adjusted)
     cx = args.width / 2.0
     cy = args.height / 2.0
+    # initial_intrinsics = torch.tensor([
+    #     [fx, 0, cx],
+    #     [0, fy, cy],
+    #     [0, 0, 1]
+    # ], dtype=torch.float32, device=device)
+
     initial_intrinsics = torch.tensor([
-        [fx, 0, cx],
-        [0, fy, cy],
+        [717.9374, 0, cx],
+        [0, 701.9832, cy],
         [0, 0, 1]
-    ], dtype=torch.float32, device=device)
+    ], dtype=torch.float32, device=device) # Add batch dimension
     
     # Load custom trajectory config if provided
     # import pdb; pdb.set_trace()
@@ -386,21 +400,6 @@ def export_rgb_pointcloud_from_cache(
     point_coordinates = point_coordinates.numpy()
     rgb_colors = rgb_colors.numpy()
 
-    # Build a structured array for PLY: (x,y,z,r,g,b)
-    vertex_data = np.empty(len(point_coordinates),
-                        dtype=[("x", "f4"), ("y", "f4"), ("z", "f4"),
-                                ("red", "u1"), ("green", "u1"), ("blue", "u1")])
-    vertex_data["x"] = point_coordinates[:, 0]
-    vertex_data["y"] = point_coordinates[:, 1]
-    vertex_data["z"] = point_coordinates[:, 2]
-    vertex_data["red"] = rgb_colors[:, 0]
-    vertex_data["green"] = rgb_colors[:, 1]
-    vertex_data["blue"] = rgb_colors[:, 2]
-
-    # Write to disk
-    # ply_element = PlyElement.describe(vertex_data, "vertex")
-    # PlyData([ply_element], text=False).write(str(output_path))
-    # print(f"Wrote {len(vertex_data):,} points to {output_path.resolve()}")
 
     trimesh_cache_points = trimesh.PointCloud(point_coordinates, rgb_colors)
     saved = trimesh_cache_points.export(str(output_path))
@@ -427,6 +426,7 @@ def main():
     args.disable_prompt_encoder   = True        # maximal savings, poorer text control
 
     args.use_vggt = True
+    # args.use_vggt = False
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args.device = device
@@ -435,12 +435,6 @@ def main():
     vggt = VGGTWrapper()
 
     args.video_save_name = None 
-    # video_save_name = args.video_save_name
-    # import pdb; pdb.set_trace()
-    # if not video_save_name:
-        # args.video_save_name = f"video_{time.strftime('%Y-%m-%d_%H-%M-%S')}"
-        # video_save_name = args.video_save_name
-
     # Ensure output directory exists
     os.makedirs(args.output_images_dir, exist_ok=True)
     
@@ -452,13 +446,13 @@ def main():
     # Generate camera trajectory
     log.info("Generating camera trajectory...")
     # import pdb; pdb.set_trace()  # Debugging breakpoint
-    generated_w2cs, generated_intrinsics = generate_custom_trajectory(args, device)
-    generated_w2cs = generated_w2cs.squeeze(0)
-    generated_intrinsics = generated_intrinsics.squeeze(0)
+    # generated_w2cs, generated_intrinsics = generate_custom_trajectory(args, device)
+    # generated_w2cs = generated_w2cs.squeeze(0)
+    # generated_intrinsics = generated_intrinsics.squeeze(0)
     
     # Convert trajectory to numpy for the model
-    view_cameras_w2cs = generated_w2cs.cpu().numpy()
-    view_camera_intrinsics = generated_intrinsics.cpu().numpy()
+    # view_cameras_w2cs = generated_w2cs.cpu().numpy()
+    # view_camera_intrinsics = generated_intrinsics.cpu().numpy()
 
 
     # # Process each input
@@ -482,130 +476,163 @@ def main():
 
         except Exception as e:
             log.error(f"Error processing input {input_item['path']}: {e}")
-            # import pdb; pdb.set_trace()
-
-
-    # import pdb; pdb.set_trace()
-    # images_np_bhwc_gen3c_resized = np.stack(images_np_bhwc_gen3c_resized, axis=0)  # Shape: [B, H, W, C]
-    
-    # import pdb; pdb.set_trace()
-    
-    images_np_original_shape_bhwc = np.stack(images_np_original_shape_bhwc, axis=0)  # Shape: [B, H, W, C]
-    output = vggt.infer_batch(frames=images_np_original_shape_bhwc, enable_downscaling=True)
-    
-    points, colors = vggt.infer_pointcloud(images_np_original_shape_bhwc, confidence_threshold=0.0005, enable_downscaling=True)
-    point_cloud = trimesh.PointCloud(points, colors)
-    point_cloud.export("vggt_input_scaled_test_point_cloud.ply")
-
-    # exit()
-    
-    images_np_bchw_vggt_resized_and_padded_shape = output["images"].squeeze(0).cpu().numpy()  # Shape:
-    images_np_bhwc_vggt_resized_and_padded_shape = images_np_bchw_vggt_resized_and_padded_shape.transpose(0, 2, 3, 1)  # Convert to [B, H, W, C]
-    height, width = images_np_bhwc_vggt_resized_and_padded_shape.shape[1:3]
-
-
-    print(f"Downscaling images from {images_np_bhwc_vggt_resized_and_padded_shape.shape[1:3]} to {height, width}")
-
-
-    # import pdb; pdb.set_trace()  # Debugging breakpoint
-    ex, intrinsics = pose_encoding_to_extri_intri(output["pose_enc"], image_size_hw=(height, width))
-
-    B = ex.shape[1]
-    pad = torch.tensor([[0, 0, 0, 1]], device=ex.device).repeat(1, B, 1, 1)
-    ex = torch.cat([ex, pad], dim=2)
-    # c2ws = torch.linalg.inv(ex)
-    # w2cs = ex
-
-    # import pdb; pdb.set_trace()
-    # w2cs = convert_vggt_c2w_to_moge_w2c(ex.squeeze(0).cpu().numpy()).astype(np.float32)  # Shape: [B, 4, 4]
-    w2cs = ex.squeeze(0).cpu().numpy().astype(np.float32)  # Shape: [B, 4, 4]
-
-    depths_np = output["depth"].squeeze(0).squeeze(-1).cpu().numpy()  # Shape: [B, H, W]
-    # masks_np = np.ones_like(depths_np, dtype=np.float32)  # Assuming all pixels are valid for now
-
-    world_points_conf = output["world_points_conf"].squeeze(0).cpu().numpy()  # Shape: [B, H, W]
-    world_points_conf = (world_points_conf - world_points_conf.min()) / (world_points_conf.max() - world_points_conf.min())  # Normalize to [0, 1]
-    # import pdb; pdb.set_trace()
-    world_points_conf = world_points_conf > 0.0005  # Apply confidence threshold
-    masks_np = world_points_conf.astype(np.float32)  # Convert to boolean mask
-    # masks_np = np.zeros_like(depths_np, dtype=np.bool)  # Initialize masks
-    # masks_np[world_points_conf] = True # Set valid pixels to 1.0 based on confidence
-    # masks_np = 
-    # print("Assuming all pixels are valid for now for masks_np!!!")
-    print(f"Currently masked {masks_np.sum()} pixels out of {masks_np.size} total pixels, in percentage: {masks_np.sum() / masks_np.size * 100:.2f}%")
-
-    world_to_cameras_np_b44 = w2cs  # Shape: [B, 4, 4]
-    # focal_lengths_np_b2 = intrinsics.squeeze(0)[:, :2, :2].cpu().numpy()  # Shape: [B, 2]
-
-
-
-    # import pdb; pdb.set_trace()
 
 
     # fixed Gen3C raster
     gen3c_height, gen3c_width = 704, 1280
     args.height = gen3c_height          # used by image loader
     args.width  = gen3c_width
-
-
-    # ---------- new: stretch directly to 704×1280 ------------------
-    _, vggt_h, vggt_w, _ = images_np_bhwc_vggt_resized_and_padded_shape.shape
-
-    scale_w = gen3c_width  / vggt_w
-    scale_h = gen3c_height / vggt_h
-
-    images_np_bhwc = np.array(
-        [cv2.resize(img, (gen3c_width, gen3c_height), interpolation=cv2.INTER_LINEAR)
-         for img in images_np_bhwc_vggt_resized_and_padded_shape]
-    )
-    depths_np = np.array(
-        [cv2.resize(depth, (gen3c_width, gen3c_height), interpolation=cv2.INTER_LINEAR)
-         for depth in depths_np]
-    )
-    masks_np_bhw = np.array(
-        [cv2.resize(mask.astype(np.float32), (gen3c_width, gen3c_height), interpolation=cv2.INTER_NEAREST)
-            for mask in masks_np]   
-    ).astype(np.float32)
-
-    Image.fromarray((images_np_bhwc[0] * 255).astype(np.uint8)).save("gen3c_input_scaled_test_image.png")   
-    Image.fromarray((depths_np[0] * 50).astype(np.uint8)).save("gen3c_input_scaled_test_depth.png")    
-    Image.fromarray((masks_np_bhw[0] * 255).astype(np.uint8)).save("gen3c_input_scaled_test_mask.png")
-
-    focal_lengths_np_b2 = []
-    principal_point_np_b2 = []
-
-    for i in range(B):
-        fx_orig = intrinsics.squeeze(0)[i, 0, 0].item()
-        fy_orig = intrinsics.squeeze(0)[i, 1, 1].item()
-        cx_orig = intrinsics.squeeze(0)[i, 0, 2].item()
-        cy_orig = intrinsics.squeeze(0)[i, 1, 2].item()
-
-        fx = fx_orig * scale_w
-        fy = fy_orig * scale_h
-        cx = cx_orig * scale_w
-        cy = cy_orig * scale_h
-
-        focal_lengths_np_b2.append([fx, fy])
-        principal_point_np_b2.append([cx, cy])
-
-    focal_lengths_np_b2 = np.array(focal_lengths_np_b2, dtype=np.float32)  # Shape: [B, 2]
-    principal_point_np_b2 = np.array(principal_point_np_b2, dtype=np.float32)  # Shape: [B, 2]
-    resolutions_np_b2 = np.array([[args.width, args.height]] * B, dtype=np.float32)  # Shape: [B, 2]
-
-    print(f"Scaled fx,fy → {focal_lengths_np_b2[0]}")
-    print(f"Scaled cx,cy → {principal_point_np_b2[0]}")
-
-    print(f"Resolutions before scaling: {resolutions_np_b2[0]}")
-    resolutions_np_b2 = np.array(
-        [[gen3c_width, gen3c_height]] * B,
-        dtype=np.float32
-    )
-    print(f"Resolutions after scaling: {resolutions_np_b2[0]}")
-
-
-    log.info("Initializing Gen3C persistent model...")
-    model = Gen3cPersistentModel(args) 
+    model = None # initialize later
     
+    images_np_original_shape_bhwc = np.stack(images_np_original_shape_bhwc, axis=0)  # Shape: [B, H, W, C]
+
+
+
+
+    if args.use_vggt:
+        log.info("Using VGGT for image processing...")
+        # Resize images to 512x512 for VGGT
+
+        output = vggt.infer_batch(frames=images_np_original_shape_bhwc, enable_downscaling=True)
+        
+        points, colors = vggt.infer_pointcloud(images_np_original_shape_bhwc, confidence_threshold=0.0005, enable_downscaling=True)
+        point_cloud = trimesh.PointCloud(points, colors)
+        point_cloud.export("vggt_input_scaled_test_point_cloud.ply")
+        
+        images_np_bchw_vggt_resized_and_padded_shape = output["images"].squeeze(0).cpu().numpy()  # Shape:
+        images_np_bhwc_vggt_resized_and_padded_shape = images_np_bchw_vggt_resized_and_padded_shape.transpose(0, 2, 3, 1)  # Convert to [B, H, W, C]
+        height, width = images_np_bhwc_vggt_resized_and_padded_shape.shape[1:3]
+
+
+        print(f"Downscaling images from {images_np_bhwc_vggt_resized_and_padded_shape.shape[1:3]} to {height, width}")
+
+        ex, intrinsics = pose_encoding_to_extri_intri(output["pose_enc"], image_size_hw=(height, width))
+
+        B = ex.shape[1]
+        pad = torch.tensor([[0, 0, 0, 1]], device=ex.device).repeat(1, B, 1, 1)
+        ex = torch.cat([ex, pad], dim=2)
+        w2cs = ex.squeeze(0).cpu().numpy().astype(np.float32)  # Shape: [B, 4, 4]
+
+        depths_np = output["depth"].squeeze(0).squeeze(-1).cpu().numpy()  # Shape: [B, H, W]
+
+        world_points_conf = output["world_points_conf"].squeeze(0).cpu().numpy()  # Shape: [B, H, W]
+        world_points_conf = (world_points_conf - world_points_conf.min()) / (world_points_conf.max() - world_points_conf.min())  # Normalize to [0, 1]
+        world_points_conf = world_points_conf > 0.0005  # Apply confidence threshold
+
+        masks_np = world_points_conf.astype(np.float32)  # Convert to boolean mask
+        print(f"Currently masked {masks_np.sum()} pixels out of {masks_np.size} total pixels, in percentage: {masks_np.sum() / masks_np.size * 100:.2f}%")
+
+        world_to_cameras_np_b44 = w2cs  # Shape: [B, 4, 4]
+
+
+        # ---------- VGGT-to-Gen3C: stretch directly to 704×1280 ------------------
+
+        log.info(f"Resizing images to Gen3C dimensions (704x1280), original shape: {images_np_bhwc_vggt_resized_and_padded_shape.shape}")
+        _, vggt_h, vggt_w, _ = images_np_bhwc_vggt_resized_and_padded_shape.shape
+
+        scale_w = gen3c_width  / vggt_w
+        scale_h = gen3c_height / vggt_h
+
+        images_np_bhwc = np.array(
+            [cv2.resize(img, (gen3c_width, gen3c_height), interpolation=cv2.INTER_LINEAR)
+            for img in images_np_bhwc_vggt_resized_and_padded_shape]
+        )
+        depths_np = np.array(
+            [cv2.resize(depth, (gen3c_width, gen3c_height), interpolation=cv2.INTER_LINEAR)
+            for depth in depths_np]
+        )
+        masks_np_bhw = np.array(
+            [cv2.resize(mask.astype(np.float32), (gen3c_width, gen3c_height), interpolation=cv2.INTER_NEAREST)
+                for mask in masks_np]   
+        ).astype(np.float32)
+
+        Image.fromarray((images_np_bhwc[0] * 255).astype(np.uint8)).save("gen3c_input_scaled_test_image.png")   
+        Image.fromarray((depths_np[0] * 50).astype(np.uint8)).save("gen3c_input_scaled_test_depth.png")    
+        Image.fromarray((masks_np_bhw[0] * 255).astype(np.uint8)).save("gen3c_input_scaled_test_mask.png")
+
+        focal_lengths_np_b2 = []
+        principal_point_np_b2 = []
+
+        for i in range(B):
+            fx_orig = intrinsics.squeeze(0)[i, 0, 0].item()
+            fy_orig = intrinsics.squeeze(0)[i, 1, 1].item()
+            cx_orig = intrinsics.squeeze(0)[i, 0, 2].item()
+            cy_orig = intrinsics.squeeze(0)[i, 1, 2].item()
+
+            fx = fx_orig * scale_w
+            fy = fy_orig * scale_h
+            cx = cx_orig * scale_w
+            cy = cy_orig * scale_h
+
+            focal_lengths_np_b2.append([fx, fy])
+            principal_point_np_b2.append([cx, cy])
+
+        focal_lengths_np_b2 = np.array(focal_lengths_np_b2, dtype=np.float32)  # Shape: [B, 2]
+        principal_point_np_b2 = np.array(principal_point_np_b2, dtype=np.float32)  # Shape: [B, 2]
+        resolutions_np_b2 = np.array([[args.width, args.height]] * B, dtype=np.float32)  # Shape: [B, 2]
+
+        # print(f"Scaled fx,fy → {focal_lengths_np_b2[0]}")
+        log.info(f"Scaled fx,fy → {focal_lengths_np_b2[0]}")
+        # print(f"Scaled cx,cy → {principal_point_np_b2[0]}")
+        log.info(f"Scaled cx,cy → {principal_point_np_b2[0]}")
+
+        # print(f"Resolutions before scaling: {resolutions_np_b2[0]}")
+
+        log.info(f"Resolutions before scaling: {resolutions_np_b2[0]}")
+        resolutions_np_b2 = np.array(
+            [[gen3c_width, gen3c_height]] * B,
+            dtype=np.float32
+        )
+        # print(f"Resolutions after scaling: {resolutions_np_b2[0]}")
+        log.info(f"Resolutions after scaling: {resolutions_np_b2[0]}")
+
+        log.info("Initializing Gen3C persistent model...")
+        model = Gen3cPersistentModel(args) 
+    
+
+    else:
+        log.info("Using MoGE for image processing...")
+        log.info("Initializing Gen3C persistent model...")
+        model = Gen3cPersistentModel(args) 
+
+
+        # import pdb; pdb.set_trace()  # Debugging breakpoint
+
+        (
+            moge_image_b1chw_float,
+            moge_depth_b11hw,
+            moge_mask_b11hw,
+            moge_initial_w2c_b144,
+            moge_intrinsics_b133,
+        ) = _predict_moge_depth(
+            images_np_original_shape_bhwc.squeeze(0) * 255.0,  # Scale to [0, 255] for MoGE
+            args.height, args.width, device, model.moge_model
+        )
+
+        # import pdb; pdb.set_trace()  # Debugging breakpoint
+
+
+        moge_image_b1chw_float = (moge_image_b1chw_float + 1) / 2.0
+
+        # import pdb; pdb.set_trace()  # Debugging breakpoint
+        images_np_bhwc = moge_image_b1chw_float.squeeze(0).permute(0, 2, 3, 1).cpu().numpy()  # Shape: [B, H, W, C]
+        # log.info("images_np range:",float(images_np_bhwc.min()),float(images_np_bhwc.max()))
+        depths_np = moge_depth_b11hw.squeeze(1).squeeze(1).cpu().numpy()  # Shape: [H, W]
+        masks_np_bhw = moge_mask_b11hw.squeeze(1).squeeze(1).cpu().numpy()  # Shape: [H, W]
+        # masks_np_bhw = np.ones_like(depths_np, dtype=np.float32)  # Assuming all pixels are valid for MoGE
+        world_to_cameras_np_b44 = moge_initial_w2c_b144.squeeze(0).cpu().numpy()  # Shape: [4, 4]
+        
+        # focal_lengths_np_b2 = []
+        # principal_point_np_b2 = []
+
+        focal_lengths_np_b2 = np.array([[moge_intrinsics_b133[0][0, 0, 0].item(), moge_intrinsics_b133[0][0, 1, 1].item()]], dtype=np.float32)  # Shape: [1, 2]
+        principal_point_np_b2 = np.array([[moge_intrinsics_b133[0][0, 0, 2].item(), moge_intrinsics_b133[0][0, 1, 2].item()]], dtype=np.float32)  # Shape: [1, 2]
+        resolutions_np_b2 = np.array([[args.width, args.height]], dtype=np.float32)  # Shape: [1, 2]
+        # for i in range(1):  # Assuming single batch for MoGE
+
+
+
+
 #################### SEED MODEL MULTIPLE ####################
     depths_np_moge = depths_np.copy()  # Copy depths for MoGE
     # depths_np_moge = 1.0 / (depths_np_moge + 1e-6)  # Inverse depth for MoGE
@@ -616,7 +643,7 @@ def main():
     # import pdb; pdb.set_trace()  # Debugging breakpoint
     model.seed_model_from_values(
                 # images_np=images_batch,
-                images_np=images_np_bhwc,
+                images_np=images_np_bhwc, # in [0,1] range please
                 depths_np=depths_np_moge,
                 # world_to_cameras_np=world_to_cameras_np,
                 world_to_cameras_np=world_to_cameras_np_b44,
@@ -638,10 +665,6 @@ def main():
 ################### END OF SEED MODEL MULTIPLE ####################
 
 
-
-    # model.cache.input_points = torch.from_numpy(input_points_recalculated.reshape(1, 1, V, 1, H, W, 3)).float().to(device)
-    # model.cache.input_mask
-
     export_rgb_pointcloud_from_cache(
         model.cache,
         output_path="gen3c_cache_scaled_test_point_cloud.ply",
@@ -649,7 +672,31 @@ def main():
         subsample_step=1,  # Keep all points
     )
 
+    intrinsics_np_b33 = np.array([
+        [
+            [focal_lengths_np_b2[0][0], 0, principal_point_np_b2[0][0]],
+            [0, focal_lengths_np_b2[0][1], principal_point_np_b2[0][1]],
+            [0, 0, 1]
+        ]
+    ], dtype=np.float32)  # Shape: [B, 3, 3]
 
+
+
+    generated_w2cs, generated_intrinsics = generate_camera_trajectory(
+        trajectory_type=args.custom_trajectory,
+        initial_w2c=torch.from_numpy(world_to_cameras_np_b44[0]).to(device),
+        initial_intrinsics=torch.from_numpy(intrinsics_np_b33[0]).to(device),
+        num_frames=args.num_video_frames,
+        movement_distance=args.movement_distance,
+        camera_rotation=args.camera_rotation,
+        center_depth=1.0,
+        device=device,
+    )
+    
+    view_cameras_w2cs = generated_w2cs.cpu().numpy().squeeze(0)  # Shape: [B, 4, 4]
+    view_camera_intrinsics = generated_intrinsics.cpu().numpy().squeeze(0)  # Shape: [B
+
+    # import pdb; pdb.set_trace()  # Debugging breakpoint
     result = model.inference_on_cameras(
         view_cameras_w2cs=view_cameras_w2cs,
         view_camera_intrinsics=view_camera_intrinsics,

@@ -189,6 +189,8 @@ class Cache3D_Base:
         if first_images.shape[1] == 1:
             # warp_chunk_size = 2 # number of images to warp at once. In this case 2. These 2 images are independent from each other!!!
             warp_chunk_size = 32 # number of images to warp at once. In this case 2. These 2 images are independent from each other!!!
+            # warp_chunk_size = 4
+            # warp_chunk_size = 16
             rendered_warp_images = []
             rendered_warp_masks = []
             rendered_warp_depth = []
@@ -228,6 +230,10 @@ class Cache3D_Base:
                 rendered_warp_masks.append(rendered_warp_masks_chunk)
                 rendered_warp_depth.append(rendered_warp_depth_chunk)
                 rendered_warped_flows.append(rendered_warped_flows_chunk)
+
+                # delete rendered_warp_images_chunk, rendered_warp_masks_chunk, rendered_warp_depth_chunk, rendered_warped_flows_chunk
+                del rendered_warp_images_chunk, rendered_warp_masks_chunk, rendered_warp_depth_chunk
+                del rendered_warped_flows_chunk
             rendered_warp_images = torch.cat(rendered_warp_images, dim=0)
             rendered_warp_masks = torch.cat(rendered_warp_masks, dim=0)
             if render_depth:
