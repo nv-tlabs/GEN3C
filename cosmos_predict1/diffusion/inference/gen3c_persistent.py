@@ -753,7 +753,6 @@ class Gen3cPersistentModel():
 
                     T_total, _, C_dim, H_dim, W_dim = full_rendered_warp_tensor.shape
 
-                    import pdb; pdb.set_trace()  # Debugging breakpoint
                     # if T_total == 
                     buffer_video_TCHnW = full_rendered_warp_tensor.permute(0, 2, 3, 1, 4)
                     buffer_video_TCHWstacked = buffer_video_TCHnW.contiguous().view(T_total, C_dim, H_dim, n_max * W_dim)
@@ -762,14 +761,19 @@ class Gen3cPersistentModel():
                     buffer_numpy_TCHWstacked = buffer_video_TCHWstacked.cpu().numpy().astype(np.uint8)
                     buffer_numpy_THWC = np.transpose(buffer_numpy_TCHWstacked, (0, 2, 3, 1))
 
-                    # final_video_to_save = np.concatenate([buffer_numpy_THWC, final_video_to_save], axis=2)
-                    final_width = self.args.width * (1 + n_max)
+                    if n_max == 1:
+                        # Not saving the buffer, just concatenating the single warp buffer
+                        final_video_to_save = np.concatenate([buffer_numpy_THWC, final_video_to_save], axis=2)
+                        final_width = self.args.width * (1 + n_max)
+                    else:
+                        final_width = self.args.width 
                     log.info(f"Concatenating video with {n_max} warp buffers. Final video width will be {final_width}")
 
                 else:
                     log.info("No warp buffers to save.")
 
             # Save video
+            # import pdb; pdb.set_trace()  # Debugging breakpoint
             save_video(
                 video=final_video_to_save,
                 fps=self.pipeline.fps,

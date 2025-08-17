@@ -130,7 +130,12 @@ def parse_arguments() -> argparse.Namespace:
         default=None,
         help="Maximum number of input images/videos to process"
     )
-    
+    parser.add_argument(
+        "--use_vggt",
+        action="store_true",
+        help="Use VGG-T for depth estimation"
+    )
+
     return parser.parse_args()
 
 
@@ -282,64 +287,6 @@ def load_and_preprocess_input(input_item: Dict[str, Union[str, int]], target_hei
 
 
 
-
-def generate_custom_trajectory(args: argparse.Namespace, device: str) -> tuple[torch.Tensor, torch.Tensor]:
-    """Generate camera trajectory based on configuration."""
-    
-    # Create identity transformation as starting point
-    initial_w2c = torch.eye(4, dtype=torch.float32, device=device)
-    
-    # Create basic intrinsics
-
-    # (Pdb) initial_cam_intrinsics_for_traj
-    # tensor([[717.9374,   0.0000, 640.0000],
-    #         [  0.0000, 701.9832, 352.0000],
-    #         [  0.0000,   0.0000,   1.0000]], device='cuda:0')
-
-    fx = fy = 800.0  # Focal length (can be adjusted)
-    cx = args.width / 2.0
-    cy = args.height / 2.0
-    # initial_intrinsics = torch.tensor([
-    #     [fx, 0, cx],
-    #     [0, fy, cy],
-    #     [0, 0, 1]
-    # ], dtype=torch.float32, device=device)
-
-    initial_intrinsics = torch.tensor([
-        [717.9374, 0, cx],
-        [0, 701.9832, cy],
-        [0, 0, 1]
-    ], dtype=torch.float32, device=device) # Add batch dimension
-    
-    # Load custom trajectory config if provided
-    # import pdb; pdb.set_trace()
-    if args.trajectory_config:
-        config = load_trajectory_config(args.trajectory_config)
-        trajectory_type = config.get("trajectory_type", args.custom_trajectory)
-        movement_distance = config.get("movement_distance", 0.3)
-        camera_rotation = config.get("camera_rotation", "center_facing")
-        num_frames = config.get("num_frames", args.num_video_frames)
-    else:
-        trajectory_type = args.custom_trajectory
-        movement_distance = args.movement_distance
-        camera_rotation = "center_facing"
-        num_frames = args.num_video_frames
-    
-    # Generate trajectory
-    generated_w2cs, generated_intrinsics = generate_camera_trajectory(
-        trajectory_type=trajectory_type,
-        initial_w2c=initial_w2c,
-        initial_intrinsics=initial_intrinsics,
-        num_frames=num_frames,
-        movement_distance=movement_distance,
-        camera_rotation=camera_rotation,
-        center_depth=1.0,
-        device=device,
-    )
-    
-    return generated_w2cs, generated_intrinsics
-
-
 def export_rgb_pointcloud_from_cache(
     cache_object,
     output_path: str,
@@ -425,7 +372,7 @@ def main():
     args.offload_prompt_upsampler = True        # if you still want nicer prompts
     args.disable_prompt_encoder   = True        # maximal savings, poorer text control
 
-    args.use_vggt = True
+    # args.use_vggt = True
     # args.use_vggt = False
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -441,20 +388,6 @@ def main():
     # Load input files (images and/or videos)
     input_items = load_input_list(args)
     
-    # Initialize persistent model
-
-    # Generate camera trajectory
-    log.info("Generating camera trajectory...")
-    # import pdb; pdb.set_trace()  # Debugging breakpoint
-    # generated_w2cs, generated_intrinsics = generate_custom_trajectory(args, device)
-    # generated_w2cs = generated_w2cs.squeeze(0)
-    # generated_intrinsics = generated_intrinsics.squeeze(0)
-    
-    # Convert trajectory to numpy for the model
-    # view_cameras_w2cs = generated_w2cs.cpu().numpy()
-    # view_camera_intrinsics = generated_intrinsics.cpu().numpy()
-
-
     # # Process each input
     images_np_bhwc_gen3c_resized = []
     images_np_original_shape_bhwc = []  # Store original shapes for resizing later
@@ -469,6 +402,7 @@ def main():
         
         try:
             # Load and preprocess input
+            # import pdb; pdb.set_trace()  # Debugging breakpoint
             image_np, image_original = load_and_preprocess_input(input_item, args.height, args.width)
             
             images_np_bhwc_gen3c_resized.append(image_np)  # Append to list
@@ -484,8 +418,9 @@ def main():
     args.width  = gen3c_width
     model = None # initialize later
     
+    args.guidance = 1
     images_np_original_shape_bhwc = np.stack(images_np_original_shape_bhwc, axis=0)  # Shape: [B, H, W, C]
-
+    images_np_bhwc_gen3c_resized = np.stack(images_np_bhwc_gen3c_resized, axis=0)  # Shape: [B, H, W, C]
 
 
 
@@ -537,14 +472,25 @@ def main():
             [cv2.resize(img, (gen3c_width, gen3c_height), interpolation=cv2.INTER_LINEAR)
             for img in images_np_bhwc_vggt_resized_and_padded_shape]
         )
+
+        # images_np_bhwc = images_np_bhwc_gen3c_resized
+
+        # import pdb; pdb.set_trace()  # Debugging breakpoint
         depths_np = np.array(
             [cv2.resize(depth, (gen3c_width, gen3c_height), interpolation=cv2.INTER_LINEAR)
             for depth in depths_np]
         )
-        masks_np_bhw = np.array(
-            [cv2.resize(mask.astype(np.float32), (gen3c_width, gen3c_height), interpolation=cv2.INTER_NEAREST)
-                for mask in masks_np]   
-        ).astype(np.float32)
+        # masks_np_bhw = np.array(
+        #     [cv2.resize(mask.astype(np.float32), (gen3c_width, gen3c_height), interpolation=cv2.INTER_NEAREST)
+        #         for mask in masks_np]   
+        # ).astype(np.float32)
+        # dilate masks
+        # import pdb; pdb.set_trace()  # Debugging breakpoint
+        # masks_np_bhw = np.array([cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=3) for mask in masks_np_bhw])
+
+        # Use ones mask for Gen3C
+        masks_np_bhw = np.ones_like(depths_np, dtype=np.float32)  # Assuming all pixels are valid for Gen3C
+
 
         Image.fromarray((images_np_bhwc[0] * 255).astype(np.uint8)).save("gen3c_input_scaled_test_image.png")   
         Image.fromarray((depths_np[0] * 50).astype(np.uint8)).save("gen3c_input_scaled_test_depth.png")    
@@ -618,8 +564,8 @@ def main():
         images_np_bhwc = moge_image_b1chw_float.squeeze(0).permute(0, 2, 3, 1).cpu().numpy()  # Shape: [B, H, W, C]
         # log.info("images_np range:",float(images_np_bhwc.min()),float(images_np_bhwc.max()))
         depths_np = moge_depth_b11hw.squeeze(1).squeeze(1).cpu().numpy()  # Shape: [H, W]
-        masks_np_bhw = moge_mask_b11hw.squeeze(1).squeeze(1).cpu().numpy()  # Shape: [H, W]
-        # masks_np_bhw = np.ones_like(depths_np, dtype=np.float32)  # Assuming all pixels are valid for MoGE
+        # masks_np_bhw = moge_mask_b11hw.squeeze(1).squeeze(1).cpu().numpy()  # Shape: [H, W]
+        masks_np_bhw = np.ones_like(depths_np, dtype=np.float32)  # Assuming all pixels are valid for MoGE
         world_to_cameras_np_b44 = moge_initial_w2c_b144.squeeze(0).cpu().numpy()  # Shape: [4, 4]
         
         # focal_lengths_np_b2 = []
