@@ -6,7 +6,7 @@ Multiview support through spatial maxpooling wasn't supported by authors in the 
 
 ## Requirements
 
-- [VGGT support (install before running this codebase)](https://github.com/facebookresearch/vggt) - for multiple view inference and estimation.
+- [VGGT support (install before running this codebase)](https://github.com/facebookresearch/vggt) - for multiple view inference.
 
 ## Static multiple view support from video
 
