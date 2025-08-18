@@ -45,7 +45,6 @@ class DiffusionGen3CModel(DiffusionV2WModel):
     #     condition_state_mask = (condition_state_mask * 2 - 1).repeat(1, 1, 1, 3, 1, 1)
     #     latent_condition = []
 
-    #     import pdb; pdb.set_trace()
     #     for i in tqdm(range(condition_state.shape[2]), desc="Encoding warped frames"):
     #         current_video_latent = self.encode(
     #             condition_state[:, :, i].permute(0, 2, 1, 3, 4).to(dtype)
@@ -75,13 +74,12 @@ class DiffusionGen3CModel(DiffusionV2WModel):
         Encode the warped frames and their masks into latent space.
         The left out space is filled with zeros and is defined by the frame_buffer_max, which is 2 by default.
 
-        From deleted Gen3C paper explanation:
-        “For each pixel we compute the ℓ₂ norm of the 16-d latent vector coming from each warp buffer and keep 
-        the entire vector from the buffer with the largest norm. Empirically this ‘vector-max’ selection 
-        gives slightly sharper results than per-channel max pooling or simple averaging.”
+        
+        For each pixel we compute the l2 norm of the 16-d latent vector coming from each warp buffer and keep 
+        the entire vector from the buffer with the largest norm. Empirically this 'vector-max' selection 
+        gives slightly sharper results than per-channel max pooling or simple averaging.
 
         """
-        # import pdb; pdb.set_trace()  # Debugging breakpoint
 
         assert condition_state.dim() == 6
         condition_state_mask = (condition_state_mask * 2 - 1).repeat(1, 1, 1, 3, 1, 1)

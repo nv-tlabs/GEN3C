@@ -311,7 +311,6 @@ class GeneralDIT(nn.Module):
                 [x_B_C_T_H_W, padding_mask.unsqueeze(1).repeat(1, 1, x_B_C_T_H_W.shape[2], 1, 1)], dim=1
             )
 
-        # import pdb; pdb.set_trace()
         x_B_T_H_W_D = self.x_embedder(x_B_C_T_H_W)
 
         if self.extra_per_block_abs_pos_emb:

@@ -262,9 +262,8 @@ class Gen3cPersistentModel():
 
 
         # if n == 1:
-        if False:
-        # import pdb; pdb.set_trace()  # Debugging breakpoint
-        # if (self.moge_model is not None and n == 1):
+        # if False:
+        if (self.moge_model is not None and n == 1):
             # TODO: allow user to provide depths, extrinsics and intrinsics
             assert depths_np is None, "Not supported yet: directly providing pre-estimated depth values along with a single image."
 
@@ -438,12 +437,10 @@ class Gen3cPersistentModel():
         # inference resolution (self.W, self.H), so this call is just to make sure
         # that all tensors have the right shape, etc.
 
-        # import pdb; pdb.set_trace()  # Debugging breakpoint
         view_cameras_w2cs, view_camera_intrinsics = self.prepare_camera_for_inference(
             view_cameras_w2cs, view_camera_intrinsics,
             old_size=(self.H, self.W), new_size=(self.H, self.W)
         )
-        # import pdb; pdb.set_trace()
 
         n_frames_total = view_cameras_w2cs.shape[1]
         num_ar_iterations = (n_frames_total - overlap_frames) // (self.sample_n_frames - overlap_frames)
@@ -452,7 +449,6 @@ class Gen3cPersistentModel():
         # Note: camera trajectory is given by the user, no need to generate it.
         log.info(f"Generating frames 0 - {self.sample_n_frames} (out of {n_frames_total} total)...")
 
-        # import pdb; pdb.set_trace()
         rendered_warp_images, rendered_warp_masks = self.cache.render_cache(
             view_cameras_w2cs[:, 0:self.sample_n_frames],
             view_camera_intrinsics[:, 0:self.sample_n_frames],
@@ -474,16 +470,8 @@ class Gen3cPersistentModel():
         final_image_list = []
 
 
-        # import pdb; pdb.set_trace()
         for j in tqdm(range(buffer_length), desc="Saving rendered warps as video"):
             rendered_warp_image = rendered_warp_images[:, :, j, ...].cpu().numpy().squeeze(0)
-
-            # import pdb; pdb.set_trace()
-
-                    # moge_image_b1chw_float = (moge_image_b1chw_float + 1) / 2.0
-
-            # rendered_warp_image = (rendered_warp_image * 0.5 + 0.5) * 255.0
-
             rendered_warp_image = ((rendered_warp_image + 1) / 2.0) * 255.0
             rendered_warp_image = rendered_warp_image.astype(np.uint8)
             rendered_warp_image = np.transpose(rendered_warp_image, (0, 2, 3, 1))
@@ -503,59 +491,24 @@ class Gen3cPersistentModel():
             final_image_list.append([Image.fromarray(rendered_warp_image[i]) for i in range(trajectory_length)])
 
 
-        # import pdb; pdb.set_trace()  # Debugging breakpoint
 
         log.info("Printing buffer length of input images")
         input_images = []
         for i in tqdm(range(buffer_length), desc="Saving input images"):
             input_image = self.cache.input_image[0,0,i, 0].cpu().numpy()
-            # input_image = (input_image * 0.5 + 0.5) * 255.0
             input_image = ((input_image + 1) / 2.0) * 255.0
             input_image = input_image.astype(np.uint8)
             input_image = input_image.transpose(1, 2, 0)
             input_image_pil = Image.fromarray(input_image)
 
-            # import pdb; pdb.set_trace()  # Debugging breakpoint
             input_image_pil.save(os.path.join(rendered_warps_folder, f"input_image_{i:04d}.png"))
             log.info(f"Saved input image {i:04d} to {os.path.join(rendered_warps_folder, f'input_image_{i:04d}.png')}")
             input_images.append(input_image_pil)
 
 
-        # import pdb; pdb.set_trace()  # Debugging breakpoint
-        # # Save the input images as 2x4 grid
-        # vertical_images = concatenate_image_lists(
-        #     # first_image_list=input_images[:4],
-        #     first_image_list=input_images[0:8:2],
-        #     # second_image_list=input_images[4:8],
-        #     second_image_list=input_images[1:8:2],
-        #     direction="vertical",
-        #     convert_mode="RGB",
-        #     background_color=(0, 0, 0, 0)  # Transparent background
-        # )
-
-        # # Concatenate them horizontally now
-        # for i in range(3):
-        #     horizontal_images_top = concatenate_image_lists(
-        #         first_image_list=vertical_images,
-        #         second_image_list=input_images[i*2+2:i*2+4],
-        #         direction="horizontal",
-        #         convert_mode="RGB",
-        #         background_color=(0, 0, 0, 0)  # Transparent background
-        #     )
-        # # Save the top 2x4 grid
-        # horizontal_images_top.save(os.path.join(rendered_warps_folder, "input_images_top_2x4.png"))
-
-        
-
-
-
         if self.args.frame_extraction_method != "first":
             horizontal_list_top = final_image_list[0]
 
-
-        
-
-            # import pdb; pdb.set_trace()  # Debugging breakpoint
             for i in range(3):
                 horizontal_list_top = concatenate_image_lists(    first_image_list=horizontal_list_top,
                     second_image_list=final_image_list[i+1],
@@ -610,9 +563,7 @@ class Gen3cPersistentModel():
         if cache_is_multiframe:
             starting_frame = starting_frame[0].unsqueeze(0)
 
-        # a
 
-        # import pdb; pdb.set_trace()  # Debugging breakpoint
         generated_output = self.pipeline.generate(
             prompt=current_prompt,
             image_path=starting_frame,
@@ -688,7 +639,6 @@ class Gen3cPersistentModel():
                     self.cache.input_frame_count() - (end_frame_idx - start_frame_idx)
                 )
 
-            # import pdb; pdb.set_trace()  # Debugging breakpoint
             rendered_warp_images, rendered_warp_masks = self.cache.render_cache(
                 current_segment_w2cs,
                 current_segment_intrinsics,
@@ -773,7 +723,6 @@ class Gen3cPersistentModel():
                     log.info("No warp buffers to save.")
 
             # Save video
-            # import pdb; pdb.set_trace()  # Debugging breakpoint
             save_video(
                 video=final_video_to_save,
                 fps=self.pipeline.fps,

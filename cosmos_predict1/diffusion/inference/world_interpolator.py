@@ -128,7 +128,6 @@ def demo(args):
     If guardrails block the generation, a critical log message is displayed
     and the function continues to the next prompt if available.
     """
-    # import ipdb; ipdb.set_trace()
     misc.set_random_seed(args.seed)
     inference_type = "world_interpolator"
     validate_args(args, inference_type)

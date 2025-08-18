@@ -96,7 +96,6 @@ class VideoExtendGeneralDIT(GeneralDIT):
         """
         B, C, T, H, W = x.shape
 
-        # import pdb; pdb.set_trace()
 
         if data_type == DataType.VIDEO:
             assert condition_video_input_mask is not None, "condition_video_input_mask is required for video data type"
@@ -199,7 +198,6 @@ class VideoExtendGeneralDIT(GeneralDIT):
         else:
             crossattn_mask = None
 
-        # import pdb; pdb.set_trace()
 
         x = rearrange(x_B_T_H_W_D, "B T H W D -> T H W B D")
         if extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D is not None:
