@@ -41,6 +41,6 @@ CUDA_VISIBLE_DEVICES=0 CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_p
 ```
 ## Next steps
 
-- [] Multiple input images support. This should support multiview 3D reconstruction, but from input images folder.
+- [x] Multiple input images support. This should support multiview 3D reconstruction, but from input images folder.
 
-- [] Multiple input video support. This should support multiview 4D reconstruction.
+- [] Multiple input video support. This should support multiview 4D reconstruction. Will probably try out with Stream3r.
