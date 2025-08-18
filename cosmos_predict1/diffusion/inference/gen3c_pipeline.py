@@ -232,7 +232,6 @@ class Gen3cPipeline(DiffusionVideo2WorldGenerationPipeline):
         rendered_warp_masks: torch.Tensor, # original shapes, not downsampled
         negative_prompt_embedding: torch.Tensor | None = None,
     ) -> Any:
-        # import pdb; pdb.set_trace()
         data_batch, state_shape = get_video_batch(
             model=self.model,
             prompt_embedding=embedding,

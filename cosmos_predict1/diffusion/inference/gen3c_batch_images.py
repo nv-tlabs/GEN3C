@@ -202,12 +202,9 @@ def extract_frame_indices_from_video(video_path: str, args: argparse.Namespace) 
         log.warning(f"Video has no frames: {video_path}")
         return []
     
-    # import pdb; pdb.set_trace()  # Debugging breakpoint
     if args.frame_extraction_method == "first":
         return [0]
-        # return [0, 1,2,3,4,5,6,7,8,9]
     elif args.frame_extraction_method == "first_max_frames":
-        # import pdb; pdb.set_trace()  # Debugging breakpoint
         return [i*args.step_size for i in range(0, min(total_frames, args.max_frames_per_video))]
     elif args.frame_extraction_method == "middle":
         return [total_frames // 2]
@@ -269,10 +266,9 @@ def load_and_preprocess_input(input_item: Dict[str, Union[str, int]], target_hei
 
     original_height, original_width = image_rgb.shape[:2]
 
-    # import pdb; pdb.set_trace()  # Debugging breakpoint
+    image_original = image_rgb.copy()  # Keep original for reference
 
     if original_height != target_height or original_width != target_width:
-        image_original = image_rgb.copy()  # Keep original for reference
         image_resized = cv2.resize(image_rgb, (target_width, target_height))
         log.info(f"Resized image from {original_width}x{original_height} to {target_width}x{target_height}")
         print(f"Resized image from {original_width}x{original_height} to {target_width}x{target_height}")
@@ -333,7 +329,6 @@ def export_rgb_pointcloud_from_cache(
     # rgb_colors = (color_channels_first * 255.0).clamp(0.0, 255.0).to(torch.uint8).view(total_pixels, 3)
     rgb_colors = color_channels_first * 0.5 + 0.5
 
-    # import pdb ; pdb.set_trace()  # Debugging breakpoint
     rgb_colors = rgb_colors.reshape(total_pixels, 3)  # (N_total, 3)
 
     # Apply mask if present
@@ -402,7 +397,6 @@ def main():
         
         try:
             # Load and preprocess input
-            # import pdb; pdb.set_trace()  # Debugging breakpoint
             image_np, image_original = load_and_preprocess_input(input_item, args.height, args.width)
             
             images_np_bhwc_gen3c_resized.append(image_np)  # Append to list
@@ -419,6 +413,7 @@ def main():
     model = None # initialize later
     
     args.guidance = 1
+
     images_np_original_shape_bhwc = np.stack(images_np_original_shape_bhwc, axis=0)  # Shape: [B, H, W, C]
     images_np_bhwc_gen3c_resized = np.stack(images_np_bhwc_gen3c_resized, axis=0)  # Shape: [B, H, W, C]
 
@@ -475,7 +470,6 @@ def main():
 
         # images_np_bhwc = images_np_bhwc_gen3c_resized
 
-        # import pdb; pdb.set_trace()  # Debugging breakpoint
         depths_np = np.array(
             [cv2.resize(depth, (gen3c_width, gen3c_height), interpolation=cv2.INTER_LINEAR)
             for depth in depths_np]
@@ -485,7 +479,6 @@ def main():
         #         for mask in masks_np]   
         # ).astype(np.float32)
         # dilate masks
-        # import pdb; pdb.set_trace()  # Debugging breakpoint
         # masks_np_bhw = np.array([cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=3) for mask in masks_np_bhw])
 
         # Use ones mask for Gen3C
@@ -533,6 +526,7 @@ def main():
         log.info(f"Resolutions after scaling: {resolutions_np_b2[0]}")
 
         log.info("Initializing Gen3C persistent model...")
+
         model = Gen3cPersistentModel(args) 
     
 
@@ -540,9 +534,6 @@ def main():
         log.info("Using MoGE for image processing...")
         log.info("Initializing Gen3C persistent model...")
         model = Gen3cPersistentModel(args) 
-
-
-        # import pdb; pdb.set_trace()  # Debugging breakpoint
 
         (
             moge_image_b1chw_float,
@@ -555,12 +546,8 @@ def main():
             args.height, args.width, device, model.moge_model
         )
 
-        # import pdb; pdb.set_trace()  # Debugging breakpoint
-
-
         moge_image_b1chw_float = (moge_image_b1chw_float + 1) / 2.0
 
-        # import pdb; pdb.set_trace()  # Debugging breakpoint
         images_np_bhwc = moge_image_b1chw_float.squeeze(0).permute(0, 2, 3, 1).cpu().numpy()  # Shape: [B, H, W, C]
         # log.info("images_np range:",float(images_np_bhwc.min()),float(images_np_bhwc.max()))
         depths_np = moge_depth_b11hw.squeeze(1).squeeze(1).cpu().numpy()  # Shape: [H, W]
@@ -574,19 +561,14 @@ def main():
         focal_lengths_np_b2 = np.array([[moge_intrinsics_b133[0][0, 0, 0].item(), moge_intrinsics_b133[0][0, 1, 1].item()]], dtype=np.float32)  # Shape: [1, 2]
         principal_point_np_b2 = np.array([[moge_intrinsics_b133[0][0, 0, 2].item(), moge_intrinsics_b133[0][0, 1, 2].item()]], dtype=np.float32)  # Shape: [1, 2]
         resolutions_np_b2 = np.array([[args.width, args.height]], dtype=np.float32)  # Shape: [1, 2]
-        # for i in range(1):  # Assuming single batch for MoGE
 
 
 
 
 #################### SEED MODEL MULTIPLE ####################
     depths_np_moge = depths_np.copy()  # Copy depths for MoGE
-    # depths_np_moge = 1.0 / (depths_np_moge + 1e-6)  # Inverse depth for MoGE
-    # normalize
-    # depths_np_moge = (depths_np_moge - np.min(depths_np_moge)) / (np.max(depths_np_moge) - np.min(depths_np_moge))
 
 
-    # import pdb; pdb.set_trace()  # Debugging breakpoint
     model.seed_model_from_values(
                 # images_np=images_batch,
                 images_np=images_np_bhwc, # in [0,1] range please
@@ -642,7 +624,6 @@ def main():
     view_cameras_w2cs = generated_w2cs.cpu().numpy().squeeze(0)  # Shape: [B, 4, 4]
     view_camera_intrinsics = generated_intrinsics.cpu().numpy().squeeze(0)  # Shape: [B
 
-    # import pdb; pdb.set_trace()  # Debugging breakpoint
     result = model.inference_on_cameras(
         view_cameras_w2cs=view_cameras_w2cs,
         view_camera_intrinsics=view_camera_intrinsics,
@@ -664,7 +645,6 @@ def main():
     output_subdir = os.path.join(args.output_images_dir, base_name)
 
     
-    import pdb; pdb.set_trace()  # Debugging breakpoint
     # Save as video if requested
     if args.save_as_video:
         video_output_dir = os.path.join(args.output_images_dir, "videos")

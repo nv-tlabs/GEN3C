@@ -160,7 +160,6 @@ class MultiviewGeneralDIT(GeneralDIT):
             in_channels = in_channels + traj_condition_dim if traj_condition_dim > 0 else in_channels
 
         in_channels = in_channels + 1 if concat_padding_mask else in_channels
-        import pdb; pdb.set_trace()
 
         self.x_embedder = PatchEmbed(
             spatial_patch_size=patch_spatial,

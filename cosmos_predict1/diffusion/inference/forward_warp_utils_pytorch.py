@@ -276,7 +276,6 @@ def forward_warp(
 
         # Create binary mask for angles < 90 degrees
         binary_mask = dot_product > 0
-        # import ipdb;ipdb.set_trace()
         mask1 *= binary_mask.unsqueeze(1)
     warped_frame2, mask2 = bilinear_splatting(frame1, mask1, trans_depth1, flow12, None, is_image=is_image)
     warped_depth2 = None

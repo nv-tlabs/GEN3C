@@ -119,7 +119,6 @@ class Cache3D_Base:
             input_depth = torch.clamp(input_depth, min=0, max=100)
             if weight_dtype == torch.float16:
                 input_depth = torch.clamp(input_depth, max=70)
-            # import pdb; pdb.set_trace()  # Debugging breakpoint
             self.input_points = (
                 self._compute_input_points(
                     input_depth.reshape(-1, 1, H, W),
@@ -317,7 +316,6 @@ class Cache3D_Buffer(Cache3D_Base):
             new_mask = new_mask.cpu()
         if self.frame_buffer_max > 1:  # newest frame first
             if self.input_image.shape[2] < self.frame_buffer_max:
-                # import pdb; pdb.set_trace()
                 self.input_image = torch.cat([new_image[:, None, None, None], self.input_image], 2)
                 self.input_points = torch.cat([new_points[:, None, None, None], self.input_points], 2)
                 if self.input_mask is not None:

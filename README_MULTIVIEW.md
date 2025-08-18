@@ -27,10 +27,18 @@ Here we added [VGGT support](https://github.com/facebookresearch/vggt), where yo
 With `--frame_extraction_method first_max_frames` to obtain first 10 steps from the input video. If you want to increase step size, use `--step_size 10`.
 
 ```bash 
- CUDA_VISIBLE_DEVICES=1 CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/inference/gen3c_batch_images.py     --checkpoint_dir checkpoints     --input_videos_dir assets/multiview/     --input_videos_pattern bg_arena.mp4     --output_images_dir results_from_batches     --save_as_video     --frame_extraction_method first_max_frames     --save_buffer     --frame_interval 1 --use_vggt --step_size 40 --foreground_masking --use_vggt
+ CUDA_VISIBLE_DEVICES=0 CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/inference/gen3c_batch_images.py     --checkpoint_dir checkpoints     --input_videos_dir assets/multiview/     --input_videos_pattern bg_arena.mp4     --output_images_dir results_from_batches     --save_as_video     --frame_extraction_method first_max_frames     --save_buffer     --frame_interval 1 --use_vggt --step_size 40 --foreground_masking --use_vggt
 
 ```
 
+## Static multiple view support from images
+
+In case you want multiple view support but from images, we provide that as well.
+I.e. if you have an images folder `assets/multiview/` and pattern for images `input_images_*.png`, you can run the script below
+
+```bash 
+CUDA_VISIBLE_DEVICES=0 CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) python cosmos_predict1/diffusion/inference/gen3c_batch_images.py     --checkpoint_dir checkpoints     --input_images_dir assets/multiview/ --input_images_pattern input_image_*.png     --output_images_dir results_from_batches     --save_as_video     --frame_extraction_method first_max_frames     --save_buffer --use_vggt --step_size 40 --foreground_masking 
+```
 ## Next steps
 
 - [] Multiple input images support. This should support multiview 3D reconstruction, but from input images folder.

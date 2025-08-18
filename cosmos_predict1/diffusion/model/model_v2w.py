@@ -117,8 +117,6 @@ class DiffusionV2WModel(DiffusionT2WModel):
         """
         assert condition_latent is not None, "condition_latent should be provided"
 
-        # import pdb; pdb.set_trace()
-
         # Prepare ground truth and warped latents
         # Condition has warped latents too
         # uncondition has zero latents in VideoExtendCondition.condition_video_pose instead
@@ -255,7 +253,6 @@ class DiffusionV2WModel(DiffusionT2WModel):
             augment_latent_unscaled = split_inputs_cp(augment_latent_unscaled, seq_dim=2, cp_group=self.net.cp_group)
         # Compose the model input with condition region (augment_latent) and generation region (noise_x)
 
-        # import pdb; pdb.set_trace()
         new_xt = indicator * augment_latent_unscaled + (1 - indicator) * xt
         return new_xt, latent, indicator
 
