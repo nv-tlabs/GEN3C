@@ -115,7 +115,7 @@ def add_common_arguments(parser):
         help="Negative prompt for the video",
     )
     parser.add_argument("--num_steps", type=int, default=35, help="Number of diffusion sampling steps")
-    parser.add_argument("--guidance", type=float, default=7, help="Guidance scale value")
+    parser.add_argument("--guidance", type=float, default=1, help="Guidance scale value")
     parser.add_argument(
         "--num_video_frames",
         type=int,

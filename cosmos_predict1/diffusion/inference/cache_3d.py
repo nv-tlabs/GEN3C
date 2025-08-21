@@ -159,13 +159,14 @@ class Cache3D_Base:
             target_intrinsics.reshape(B, F_target, 1, 3, 3).expand(B, F_target, N, 3, 3).reshape(-1, 3, 3)
         )
 
-        first_images = rearrange(self.input_image[:, start_frame_idx:start_frame_idx+F_target].expand(B, F_target, N, V, C, H, W), "B F N V C H W-> (B F N) V C H W").to(self.device)
+        # Keep large tensors on CPU; move only per-chunk slices to GPU inside the loop
+        first_images = rearrange(self.input_image[:, start_frame_idx:start_frame_idx+F_target].expand(B, F_target, N, V, C, H, W), "B F N V C H W-> (B F N) V C H W")
         first_points = rearrange(
             self.input_points[:, start_frame_idx:start_frame_idx+F_target].expand(B, F_target, N, V, H, W, 3), "B F N V H W C-> (B F N) V H W C"
-        ).to(self.device)
+        )
         first_masks = rearrange(
             self.input_mask[:, start_frame_idx:start_frame_idx+F_target].expand(B, F_target, N, V, 1, H, W), "B F N V C H W-> (B F N) V C H W"
-        ).to(self.device) if self.input_mask is not None else None
+        ) if self.input_mask is not None else None
         boundary_masks = rearrange(
             self.boundary_mask.expand(B, F_target, N, V, 1, H, W), "B F N V C H W-> (B F N) V C H W"
         ) if self.boundary_mask is not None else None
@@ -175,39 +176,55 @@ class Cache3D_Base:
             rendered_warp_images = []
             rendered_warp_masks = []
             rendered_warp_depth = []
-            rendered_warped_flows = []
 
             first_images = first_images.squeeze(1)
             first_points = first_points.squeeze(1)
             first_masks = first_masks.squeeze(1) if first_masks is not None else None
             for i in range(0, first_images.shape[0], warp_chunk_size):
-                (
-                    rendered_warp_images_chunk,
-                    rendered_warp_masks_chunk,
-                    rendered_warp_depth_chunk,
-                    rendered_warped_flows_chunk,
-                ) = forward_warp(
-                    first_images[i : i + warp_chunk_size],
-                    mask1=first_masks[i : i + warp_chunk_size] if first_masks is not None else None,
-                    depth1=None,
-                    transformation1=None,
-                    transformation2=target_w2cs[i : i + warp_chunk_size],
-                    intrinsic1=target_intrinsics[i : i + warp_chunk_size],
-                    intrinsic2=target_intrinsics[i : i + warp_chunk_size],
-                    render_depth=render_depth,
-                    world_points1=first_points[i : i + warp_chunk_size],
-                    foreground_masking=self.foreground_masking,
-                    boundary_mask=boundary_masks[i : i + warp_chunk_size, 0, 0] if boundary_masks is not None else None
-                )
-                rendered_warp_images.append(rendered_warp_images_chunk)
-                rendered_warp_masks.append(rendered_warp_masks_chunk)
-                rendered_warp_depth.append(rendered_warp_depth_chunk)
-                rendered_warped_flows.append(rendered_warped_flows_chunk)
+                with torch.no_grad():
+                    imgs_chunk = first_images[i : i + warp_chunk_size].to(self.device, non_blocking=True)
+                    pts_chunk = first_points[i : i + warp_chunk_size].to(self.device, non_blocking=True)
+                    masks_chunk = (
+                        first_masks[i : i + warp_chunk_size].to(self.device, non_blocking=True)
+                        if first_masks is not None
+                        else None
+                    )
+                    bmask_chunk = (
+                        boundary_masks[i : i + warp_chunk_size, 0, 0].to(self.device, non_blocking=True)
+                        if boundary_masks is not None
+                        else None
+                    )
+                    (
+                        rendered_warp_images_chunk,
+                        rendered_warp_masks_chunk,
+                        rendered_warp_depth_chunk,
+                        _,
+                    ) = forward_warp(
+                        imgs_chunk,
+                        mask1=masks_chunk,
+                        depth1=None,
+                        transformation1=None,
+                        transformation2=target_w2cs[i : i + warp_chunk_size],
+                        intrinsic1=target_intrinsics[i : i + warp_chunk_size],
+                        intrinsic2=target_intrinsics[i : i + warp_chunk_size],
+                        render_depth=render_depth,
+                        world_points1=pts_chunk,
+                        foreground_masking=self.foreground_masking,
+                        boundary_mask=bmask_chunk,
+                    )
+                    rendered_warp_images.append(rendered_warp_images_chunk.to("cpu"))
+                    rendered_warp_masks.append(rendered_warp_masks_chunk.to("cpu"))
+                    if render_depth:
+                        rendered_warp_depth.append(rendered_warp_depth_chunk.to("cpu"))
+                    del imgs_chunk, pts_chunk, masks_chunk, bmask_chunk
+                    del rendered_warp_images_chunk, rendered_warp_masks_chunk
+                    if render_depth:
+                        del rendered_warp_depth_chunk
+                    torch.cuda.empty_cache()
             rendered_warp_images = torch.cat(rendered_warp_images, dim=0)
             rendered_warp_masks = torch.cat(rendered_warp_masks, dim=0)
             if render_depth:
                 rendered_warp_depth = torch.cat(rendered_warp_depth, dim=0)
-            rendered_warped_flows = torch.cat(rendered_warped_flows, dim=0)
 
         else:
             raise NotImplementedError
@@ -314,6 +331,8 @@ class Cache3D_Buffer(Cache3D_Base):
         pixels, masks = super().render_cache(
             target_w2cs, target_intrinsics, render_depth
         )
+        pixels = pixels.to(output_device)
+        masks = masks.to(output_device)
         if not render_depth:
             noise = torch.randn(pixels.shape, generator=self.generator, device=pixels.device, dtype=pixels.dtype)
             per_buffer_noise = (
@@ -321,7 +340,85 @@ class Cache3D_Buffer(Cache3D_Base):
                 * self.noise_aug_strength
             )
             pixels = pixels + noise * per_buffer_noise.reshape(1, 1, -1, 1, 1, 1)  # B, F, N, C, H, W
-        return pixels.to(output_device), masks.to(output_device)
+        return pixels, masks
+
+
+class Cache3D_BufferSelector(Cache3D_Base):
+    def __init__(self, frame_buffer_max=1, mask_for_max_buffer_model: bool = True, mask_full_threshold: float = 0.9, **kwargs):
+        """A buffer that holds many initialization frames and selects top-K by overlap per target.
+
+        This class does not support update_cache. It assumes multiple source frames are provided
+        at initialization time via the 'N' (buffer) dimension.
+        """
+        super().__init__(**kwargs)
+        self.frame_buffer_max = max(int(frame_buffer_max), 1)
+        self.mask_for_max_buffer_model = bool(mask_for_max_buffer_model)
+        self.mask_full_threshold = float(mask_full_threshold)
+
+    def update_cache(self, *args, **kwargs): 
+        raise NotImplementedError("Cache3D_BufferSelector does not support update_cache")
+
+    def render_cache(
+        self,
+        target_w2cs,
+        target_intrinsics,
+        render_depth: bool = False,
+        start_frame_idx: int = 0,
+    ):
+        # Warp from all buffer frames first
+        output_device = target_w2cs.device
+        target_w2cs = target_w2cs.to(self.weight_dtype).to(self.device)
+        target_intrinsics = target_intrinsics.to(self.weight_dtype).to(self.device)
+
+        pixels_all, masks_all = super().render_cache(
+            target_w2cs, target_intrinsics, render_depth, start_frame_idx
+        )  # shapes: [B, F, N, C, H, W] (pixels) and [B, F, N, 1, H, W] (masks)
+
+        B, F, N = pixels_all.shape[0], pixels_all.shape[1], pixels_all.shape[2]
+        if N <= self.frame_buffer_max:
+            pixels_sel, masks_sel = pixels_all, masks_all
+        else:
+            # Compute per-buffer overlap score: sum over frames and pixels
+            # masks_all: [B, F, N, 1, H, W]
+            overlap_scores = masks_all.sum(dim=(1, 3, 4, 5))  # -> [B, N]
+
+            # Select top-K for each batch independently
+            k = min(self.frame_buffer_max, N)
+            topk_indices = overlap_scores.topk(k=k, dim=1, largest=True, sorted=True).indices  # [B, k]
+
+            # Gather along N dimension
+            selected_pixels_list = []
+            selected_masks_list = []
+            for b in range(B):
+                idx_b = topk_indices[b]  # [k]
+                selected_pixels_list.append(pixels_all[b : b + 1, :, idx_b])  # [1, F, k, C, H, W]
+                selected_masks_list.append(masks_all[b : b + 1, :, idx_b])    # [1, F, k, 1, H, W]
+
+            pixels_sel = torch.cat(selected_pixels_list, dim=0)
+            masks_sel = torch.cat(selected_masks_list, dim=0)
+        if self.mask_for_max_buffer_model and not render_depth:
+            # masks_sel: [B, F, k, 1, H, W]
+            _masks = masks_sel.mean(dim=[3, 4, 5])  # -> [B, F, k]
+            Bm, Fm, Nm = _masks.shape
+            _masks_flat = rearrange(_masks, "b t n -> (b t) n")
+            result_mask = torch.zeros_like(_masks_flat)
+            near_full = _masks_flat >= self.mask_full_threshold
+            has_near_full = near_full.any(dim=1)
+
+            indices = near_full.float().argmax(dim=1)
+            valid_rows = torch.arange(near_full.size(0), device=_masks_flat.device)[has_near_full]
+            valid_indices = indices[has_near_full]
+            result_mask[valid_rows, valid_indices] = 1
+
+            invalid_rows = torch.arange(near_full.size(0), device=_masks_flat.device)[~has_near_full]
+            if invalid_rows.numel() > 0:
+                result_mask[invalid_rows] = 1
+            result_mask = rearrange(result_mask, "(b t) n -> b t n", b=Bm, t=Fm)
+
+            result_mask_expanded = result_mask.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)  # [B, F, k, 1, 1, 1]
+            pixels_sel = (pixels_sel + 1) * result_mask_expanded - 1
+            masks_sel = masks_sel * result_mask_expanded
+        return pixels_sel.to(output_device), masks_sel.to(output_device)
 
 
 class Cache4D(Cache3D_Base):

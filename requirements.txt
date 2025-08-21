@@ -34,3 +34,4 @@ torchvision==0.21.0
 tqdm==4.66.5
 transformers==4.49.0
 warp-lang==1.7.2
+openexr==3.3.5
