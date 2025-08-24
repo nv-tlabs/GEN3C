@@ -42,7 +42,7 @@ For any other questions related to the model, please contact Xuanchi, Tianchang 
 
 ## News
 
-- 2025-08-21 We’ve released integration with ViPE for video-to-video generation, along with code for **multi-view** inference!
+- 2025-08-21 We’ve released integration with ViPE for video-to-video generation, along with code for [**multi-view** inference](https://github.com/nv-tlabs/GEN3C?tab=readme-ov-file#example-3-video-generation-from-multiview-images)!
 
 - 2025-08-12 We’ve just released [ViPE](https://github.com/nv-tlabs/vipe) — a data annotation pipeline for jointly predicting depth and camera pose from video. ViPE powers both the training and testing stages of GEN3C!
 
