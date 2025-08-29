@@ -506,7 +506,8 @@ class Gen3cPersistentModel():
             input_images.append(input_image_pil)
 
 
-        if self.args.frame_extraction_method != "first":
+        # if self.args.frame_extraction_method != "first":
+        if self.args.frame_extraction_method != "first" and buffer_length >= 8:
             horizontal_list_top = final_image_list[0]
 
             for i in range(3):
