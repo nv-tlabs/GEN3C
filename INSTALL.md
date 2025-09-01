@@ -13,6 +13,10 @@ conda env create --file cosmos-predict1.yaml
 conda activate cosmos-predict1
 # Install the dependencies.
 pip install -r requirements.txt
+
+# Install cosmos_predict1 for Nvidia's diffusers-like models
+pip install -e .
+
 # Patch Transformer engine linking issues in conda environments.
 ln -sf $CONDA_PREFIX/lib/python3.10/site-packages/nvidia/*/include/* $CONDA_PREFIX/include/
 ln -sf $CONDA_PREFIX/lib/python3.10/site-packages/nvidia/*/include/* $CONDA_PREFIX/include/python3.10

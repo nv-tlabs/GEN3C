@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cosmos-predict1"
+version = "0.0.1"
+description = "Local install of NVIDIA's cosmos_predict1 module"
+authors = [{name = "Local"}]
+
+[tool.setuptools]
+packages = ["cosmos_predict1"]
+
