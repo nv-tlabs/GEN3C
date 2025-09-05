@@ -233,7 +233,7 @@ class Cache3D_Base:
         masks = rearrange(rendered_warp_masks, "(b f n) c h w -> b f n c h w", b=bs, f=F_target, n=N)
         if render_depth:
             pixels = rearrange(rendered_warp_depth, "(b f n) h w -> b f n h w", b=bs, f=F_target, n=N)
-        return pixels, masks
+        return pixels.to(self.device), masks.to(self.device)
 
 
 class Cache3D_Buffer(Cache3D_Base):
