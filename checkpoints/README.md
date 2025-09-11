@@ -1,4 +1,1 @@
-
-### Checkpoint directory
-
-Model checkpoints will be downloaded to this directory.
+/mnt/storage/dusan001/GEN3C/checkpoints/README.md

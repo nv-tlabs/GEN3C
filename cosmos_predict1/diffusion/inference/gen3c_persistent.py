@@ -411,12 +411,16 @@ class Gen3cPersistentModel():
 
 
     @torch.no_grad()
-    def inference_on_cameras(self, view_cameras_w2cs: np.ndarray, view_camera_intrinsics: np.ndarray,
+    def inference_on_cameras(self, 
+                             view_cameras_w2cs: np.ndarray, 
+                             view_camera_intrinsics: np.ndarray,
                              fps: int | float,
                              overlap_frames:int = 1,
                              return_estimated_depths: bool = False,
                              video_save_quality: int = 5,
-                             save_buffer: bool | None = None) -> dict | None:
+                             save_buffer: bool | None = None,
+                             rendered_warp_images: torch.Tensor | np.ndarray | None = None,
+                             rendered_warp_masks: torch.Tensor | np.ndarray | None = None) -> dict | None:
 
         # TODO: this is not safe if multiple inference requests are served in parallel.
         # TODO: also, it's not 100% clear whether it is correct to override this request
@@ -449,104 +453,38 @@ class Gen3cPersistentModel():
         # Note: camera trajectory is given by the user, no need to generate it.
         log.info(f"Generating frames 0 - {self.sample_n_frames} (out of {n_frames_total} total)...")
 
-        rendered_warp_images, rendered_warp_masks = self.cache.render_cache(
-            view_cameras_w2cs[:, 0:self.sample_n_frames],
-            view_camera_intrinsics[:, 0:self.sample_n_frames],
-            start_frame_idx=0,
-        )
+        # If external warps are provided, use them; else render from cache
+        provided_rendered_warp_images = None
+        provided_rendered_warp_masks = None
+        if rendered_warp_images is not None and rendered_warp_masks is not None:
+            provided_rendered_warp_images = torch.from_numpy(rendered_warp_images) if isinstance(rendered_warp_images, np.ndarray) else rendered_warp_images
+            provided_rendered_warp_masks = torch.from_numpy(rendered_warp_masks) if isinstance(rendered_warp_masks, np.ndarray) else rendered_warp_masks
+            provided_rendered_warp_images = provided_rendered_warp_images.to(self.device_with_rank)
+            provided_rendered_warp_masks = provided_rendered_warp_masks.to(self.device_with_rank)
+            # Take the first segment (0:self.sample_n_frames)
+            rendered_warp_images = provided_rendered_warp_images[:, 0:self.sample_n_frames]
+            rendered_warp_masks = provided_rendered_warp_masks[:, 0:self.sample_n_frames]
+        else:
+            
+            rendered_warp_images, rendered_warp_masks = self.cache.render_cache(
+                view_cameras_w2cs[:, 0:self.sample_n_frames],
+                view_camera_intrinsics[:, 0:self.sample_n_frames],
+                start_frame_idx=0,
+            )
+
+            import pdb; pdb.set_trace()
 
 
         #  Save video of rendered warps
         # outputs/rendered_warps
         rendered_warps_folder = self.args.video_save_folder + "/rendered_warps"
         os.makedirs(rendered_warps_folder, exist_ok=True)
-
-        # def save_rendered_warp_images(rendered_warp_images: torch.Tensor):
-
-        trajectory_length = rendered_warp_images.shape[1]
-        buffer_length = rendered_warp_images.shape[2]
-
-
-        final_image_list = []
-
-
-        for j in tqdm(range(buffer_length), desc="Saving rendered warps as video"):
-            rendered_warp_image = rendered_warp_images[:, :, j, ...].cpu().numpy().squeeze(0)
-            rendered_warp_image = ((rendered_warp_image + 1) / 2.0) * 255.0
-            rendered_warp_image = rendered_warp_image.astype(np.uint8)
-            rendered_warp_image = np.transpose(rendered_warp_image, (0, 2, 3, 1))
-
-            # Save each view as a separate video
-            view_video_path = os.path.join(rendered_warps_folder, f"view_{j:04d}.mp4")
-            log.info(f"Saving rendered warp view {j:04d} to {view_video_path}")
-            save_video(
-                video=rendered_warp_image,
-                fps=self.pipeline.fps,
-                video_save_path=view_video_path,
-                video_save_quality=5,
-                H=self.H,
-                W=self.W,
-            )
-
-            final_image_list.append([Image.fromarray(rendered_warp_image[i]) for i in range(trajectory_length)])
-
-
-
-        log.info("Printing buffer length of input images")
-        input_images = []
-        for i in tqdm(range(buffer_length), desc="Saving input images"):
-            input_image = self.cache.input_image[0,0,i, 0].cpu().numpy()
-            input_image = ((input_image + 1) / 2.0) * 255.0
-            input_image = input_image.astype(np.uint8)
-            input_image = input_image.transpose(1, 2, 0)
-            input_image_pil = Image.fromarray(input_image)
-
-            input_image_pil.save(os.path.join(rendered_warps_folder, f"input_image_{i:04d}.png"))
-            log.info(f"Saved input image {i:04d} to {os.path.join(rendered_warps_folder, f'input_image_{i:04d}.png')}")
-            input_images.append(input_image_pil)
-
-
-        # if self.args.frame_extraction_method != "first":
-        if self.args.frame_extraction_method != "first" and buffer_length >= 8:
-            horizontal_list_top = final_image_list[0]
-
-            for i in range(3):
-                horizontal_list_top = concatenate_image_lists(    first_image_list=horizontal_list_top,
-                    second_image_list=final_image_list[i+1],
-                    direction="horizontal",
-                    convert_mode="RGB",
-                    background_color=(0, 0, 0, 0)  # Transparent background
-                )
-
-            horizontal_list_bottom = final_image_list[3]
-
-            for i in range(3):
-                horizontal_list_bottom = concatenate_image_lists(
-                    first_image_list=horizontal_list_bottom,
-                    second_image_list=final_image_list[i+3+1],
-                    direction="horizontal",
-                    convert_mode="RGB",
-                    background_color=(0, 0, 0, 0)  # Transparent background
-                )
-
-
-            final_concatenated_video_top_bottom_2x4 = concatenate_image_lists(
-                first_image_list=horizontal_list_top,
-                second_image_list=horizontal_list_bottom,
-                direction="vertical",
-                convert_mode="RGB",
-                background_color=(0, 0, 0, 0)  # Transparent background
-            )
-
-            save_video(
-                video=[np.array(img) for img in final_concatenated_video_top_bottom_2x4],
-                fps=self.pipeline.fps,
-                video_save_path=os.path.join(rendered_warps_folder, "rendered_warps_2x4.mp4"),
-                video_save_quality=video_save_quality,
-                H=self.H,
-                W=self.W,
-            )
-            log.info(f"Saved rendered warps video to {os.path.join(rendered_warps_folder, 'rendered_warps_2x4.mp4')}")
+        # Visualization (images + per-view videos + 2x4 grid)
+        self._save_rendered_warp_visualizations(
+            rendered_warp_images=rendered_warp_images,
+            rendered_warps_folder=rendered_warps_folder,
+            video_save_quality=video_save_quality,
+        )
 
         all_rendered_warps = []
         all_predicted_depth = []
@@ -640,11 +578,17 @@ class Gen3cPersistentModel():
                     self.cache.input_frame_count() - (end_frame_idx - start_frame_idx)
                 )
 
-            rendered_warp_images, rendered_warp_masks = self.cache.render_cache(
-                current_segment_w2cs,
-                current_segment_intrinsics,
-                start_frame_idx=cache_start_frame_idx,
-            )
+            if provided_rendered_warp_images is not None and provided_rendered_warp_masks is not None and \
+               provided_rendered_warp_images.shape[1] >= end_frame_idx and provided_rendered_warp_masks.shape[1] >= end_frame_idx:
+                # Use externally provided warps for this segment
+                rendered_warp_images = provided_rendered_warp_images[:, start_frame_idx:end_frame_idx]
+                rendered_warp_masks = provided_rendered_warp_masks[:, start_frame_idx:end_frame_idx]
+            else:
+                rendered_warp_images, rendered_warp_masks = self.cache.render_cache(
+                    current_segment_w2cs,
+                    current_segment_intrinsics,
+                    start_frame_idx=cache_start_frame_idx,
+                )
 
             if save_buffer:
                 all_rendered_warps.append(rendered_warp_images[:, overlap_frames:].clone().cpu())
@@ -759,6 +703,94 @@ class Gen3cPersistentModel():
         }
 
     # --------------------
+
+    def _save_rendered_warp_visualizations(self,
+                                           rendered_warp_images: torch.Tensor,
+                                           rendered_warps_folder: str,
+                                           video_save_quality: int) -> None:
+        """Save per-view rendered warp videos, input images, and a 2x4 grid video.
+
+        - Writes one MP4 per buffer view to `rendered_warps_folder`.
+        - Writes input images as PNGs for each buffer index.
+        - Optionally writes a 2x4 concatenated grid MP4 when available.
+        """
+        trajectory_length = rendered_warp_images.shape[1]
+        buffer_length = rendered_warp_images.shape[2]
+
+        final_image_list = []
+
+        for j in tqdm(range(buffer_length), desc="Saving rendered warps as video"):
+            rendered_warp_image = rendered_warp_images[:, :, j, ...].cpu().numpy().squeeze(0)
+            rendered_warp_image = ((rendered_warp_image + 1) / 2.0) * 255.0
+            rendered_warp_image = rendered_warp_image.astype(np.uint8)
+            rendered_warp_image = np.transpose(rendered_warp_image, (0, 2, 3, 1))
+
+            view_video_path = os.path.join(rendered_warps_folder, f"view_{j:04d}.mp4")
+            log.info(f"Saving rendered warp view {j:04d} to {view_video_path}")
+            save_video(
+                video=rendered_warp_image,
+                fps=self.pipeline.fps,
+                video_save_path=view_video_path,
+                video_save_quality=5,
+                H=self.H,
+                W=self.W,
+            )
+
+            final_image_list.append([Image.fromarray(rendered_warp_image[i]) for i in range(trajectory_length)])
+
+        log.info("Printing buffer length of input images")
+        input_images = []
+        for i in tqdm(range(buffer_length), desc="Saving input images"):
+            input_image = self.cache.input_image[0, 0, i, 0].cpu().numpy()
+            input_image = ((input_image + 1) / 2.0) * 255.0
+            input_image = input_image.astype(np.uint8)
+            input_image = input_image.transpose(1, 2, 0)
+            input_image_pil = Image.fromarray(input_image)
+
+            input_path = os.path.join(rendered_warps_folder, f"input_image_{i:04d}.png")
+            input_image_pil.save(input_path)
+            log.info(f"Saved input image {i:04d} to {input_path}")
+            input_images.append(input_image_pil)
+
+        if self.args.frame_extraction_method != "first" and buffer_length >= 8:
+            horizontal_list_top = final_image_list[0]
+            for i in range(3):
+                horizontal_list_top = concatenate_image_lists(
+                    first_image_list=horizontal_list_top,
+                    second_image_list=final_image_list[i + 1],
+                    direction="horizontal",
+                    convert_mode="RGB",
+                    background_color=(0, 0, 0, 0)
+                )
+
+            horizontal_list_bottom = final_image_list[3]
+            for i in range(3):
+                horizontal_list_bottom = concatenate_image_lists(
+                    first_image_list=horizontal_list_bottom,
+                    second_image_list=final_image_list[i + 3 + 1],
+                    direction="horizontal",
+                    convert_mode="RGB",
+                    background_color=(0, 0, 0, 0)
+                )
+
+            final_concatenated_video_top_bottom_2x4 = concatenate_image_lists(
+                first_image_list=horizontal_list_top,
+                second_image_list=horizontal_list_bottom,
+                direction="vertical",
+                convert_mode="RGB",
+                background_color=(0, 0, 0, 0)
+            )
+
+            grid_path = os.path.join(rendered_warps_folder, "rendered_warps_2x4.mp4")
+            save_video(
+                video=[np.array(img) for img in final_concatenated_video_top_bottom_2x4],
+                fps=self.pipeline.fps,
+                video_save_path=grid_path,
+                video_save_quality=video_save_quality,
+                H=self.H,
+                W=self.W,
+            )
+            log.info(f"Saved rendered warps video to {grid_path}")
 
     def prepare_camera_for_inference(self, view_cameras: np.ndarray, view_camera_intrinsics: np.ndarray,
                                      old_size: tuple[int, int], new_size: tuple[int, int]):

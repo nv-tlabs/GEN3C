@@ -86,6 +86,7 @@ class DiffusionGen3CModel(DiffusionV2WModel):
         latent_condition_video = []
         latent_condition_mask = []
 
+        import pdb; pdb.set_trace()
         B, T, V, C_in, H, W = condition_state.shape
 
         for i in tqdm(range(condition_state.shape[2]), desc="Encoding warped frames"):
