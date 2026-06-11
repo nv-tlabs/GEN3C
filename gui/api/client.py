@@ -49,6 +49,7 @@ from pyngp import tlog
 from api_types import SeedingRequest, CompressedSeedingRequest, SeedingResult, \
 					  InferenceRequest, InferenceResult, CompressedInferenceResult, \
 					  RequestState, PendingRequest
+import safe_serialization
 from httpx_utils import httpx_request
 from v2v_utils import load_v2v_seeding_data, ensure_alpha_channel, srgb_to_linear
 
@@ -509,7 +510,7 @@ class Gen3cClient():
 	def request_frame(self, req: InferenceRequest, sync: bool = False) -> asyncio.Task | InferenceResult:
 		qp = "?sync=1" if sync else ""
 		url = self.url + "/request-inference" + qp
-		data = pickle.dumps(req)
+		data = safe_serialization.dumps(req)
 
 		def req_done_cb(task_or_res: asyncio.Task | httpx.Response) -> None:
 			if sync:
@@ -771,7 +772,7 @@ class Gen3cClient():
 		if not isinstance(req, CompressedSeedingRequest):
 			req = req.compress()
 
-		data = pickle.dumps(req)
+		data = safe_serialization.dumps(req)
 		try:
 			progress_direction = "both" if depth_was_missing else "auto"
 			return httpx_request("post", url, data=data, timeout=self.req_timeout_s,
