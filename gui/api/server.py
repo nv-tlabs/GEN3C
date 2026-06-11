@@ -27,6 +27,7 @@ import imageio.v3 as imageio
 import numpy as np
 
 from api_types import CompressedSeedingRequest
+import safe_serialization
 from server_base import InferenceModel
 from server_cosmos import CosmosModel
 
@@ -104,7 +105,9 @@ async def request_inference(request: Request):
 	"""
 	sync = get_bool_query_param(request, "sync", default=False)
 	req: bytes = await request.body()
-	req = pickle.loads(req)
+	# Untrusted request body: decode with the safetensors-based codec, never
+	# pickle (pickle.loads runs arbitrary code carried in the stream).
+	req = safe_serialization.loads(req)
 
 	try:
 		if sync:
@@ -128,7 +131,9 @@ async def seed_model(request: Request):
 	"""
 	sync = get_bool_query_param(request, "sync", default=False)
 	req: bytes = await request.body()
-	req = pickle.loads(req)
+	# Untrusted request body: decode with the safetensors-based codec, never
+	# pickle (pickle.loads runs arbitrary code carried in the stream).
+	req = safe_serialization.loads(req)
 
 	if isinstance(req, CompressedSeedingRequest):
 		req.decompress()
