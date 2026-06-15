@@ -23,7 +23,6 @@ from datetime import datetime
 import glob
 import os
 from os.path import realpath, dirname, join
-import pickle
 import subprocess
 import sys
 import time
@@ -46,9 +45,10 @@ sys.path += [os.path.dirname(pyd) for pyd in glob.iglob(os.path.join(ROOT_DIR, "
 import pyngp as ngp
 from pyngp import tlog
 
+from api_serialization import API_MEDIA_TYPE, dumps_api_message, loads_api_message
 from api_types import SeedingRequest, CompressedSeedingRequest, SeedingResult, \
-					  InferenceRequest, InferenceResult, CompressedInferenceResult, \
-					  RequestState, PendingRequest
+						  InferenceRequest, InferenceResult, CompressedInferenceResult, \
+						  RequestState, PendingRequest
 from httpx_utils import httpx_request
 from v2v_utils import load_v2v_seeding_data, ensure_alpha_channel, srgb_to_linear
 
@@ -509,7 +509,8 @@ class Gen3cClient():
 	def request_frame(self, req: InferenceRequest, sync: bool = False) -> asyncio.Task | InferenceResult:
 		qp = "?sync=1" if sync else ""
 		url = self.url + "/request-inference" + qp
-		data = pickle.dumps(req)
+		data = dumps_api_message(req)
+		headers = {"Content-Type": API_MEDIA_TYPE, "Accept": API_MEDIA_TYPE}
 
 		def req_done_cb(task_or_res: asyncio.Task | httpx.Response) -> None:
 			if sync:
@@ -519,12 +520,14 @@ class Gen3cClient():
 					res: httpx.Response = task_or_res.result()
 				except RuntimeError as e:
 					tlog.error(f"Inference request task failed!\n{e}")
+					return
 
-			if res.status_code != 202:
+			expected_status_code = 200 if sync else 202
+			if res.status_code != expected_status_code:
 				tlog.error(f"Inference request failed!\n{res.content}")
 
 			if sync:
-				return pickle.loads(res.content)
+				return loads_api_message(res.content, allowed_types=(InferenceResult, CompressedInferenceResult))
 			else:
 				if req.request_id not in self.pending_requests:
 					tlog.error(f"Inference request {req.request_id} was created on the server,"
@@ -536,7 +539,7 @@ class Gen3cClient():
 				state.task = None
 
 		task_or_res = httpx_request(
-			"post", url, data=data, timeout=self.req_timeout_s,
+			"post", url, data=data, headers=headers, timeout=self.req_timeout_s,
 			async_client=(None if sync else self.client),
 			callback=req_done_cb
 		)
@@ -569,7 +572,10 @@ class Gen3cClient():
 				return
 
 			# Result ready
-			on_result_received(pickle.loads(res.content), response=res)
+			on_result_received(
+				loads_api_message(res.content, allowed_types=(InferenceResult, CompressedInferenceResult)),
+				response=res
+			)
 			return
 
 		def progress_cb(progress: float, bar: tqdm, **kwargs):
@@ -755,7 +761,7 @@ class Gen3cClient():
 				return None
 
 			if depth_was_missing:
-				response: SeedingResult = pickle.loads(res.content)
+				response: SeedingResult = loads_api_message(res.content, allowed_types=(SeedingResult,))
 				self.display_seeding_data(req, res=response, save_frames=self.testbed.gen3c_save_frames)
 
 			message = "Model seeded."
@@ -771,10 +777,11 @@ class Gen3cClient():
 		if not isinstance(req, CompressedSeedingRequest):
 			req = req.compress()
 
-		data = pickle.dumps(req)
+		data = dumps_api_message(req)
+		headers = {"Content-Type": API_MEDIA_TYPE, "Accept": API_MEDIA_TYPE}
 		try:
 			progress_direction = "both" if depth_was_missing else "auto"
-			return httpx_request("post", url, data=data, timeout=self.req_timeout_s,
+			return httpx_request("post", url, data=data, headers=headers, timeout=self.req_timeout_s,
 								 progress=True, progress_direction=progress_direction,
 								 desc="Seeding",
 								 async_client=(None if sync else self.client),

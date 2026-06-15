@@ -26,12 +26,19 @@ from fastapi.responses import Response
 import imageio.v3 as imageio
 import numpy as np
 
-from api_types import CompressedSeedingRequest
+from api_serialization import API_MEDIA_TYPE, APIMessageError, dumps_api_message, loads_api_message
+from api_types import CompressedSeedingRequest, InferenceRequest, SeedingRequest
 from server_base import InferenceModel
-from server_cosmos import CosmosModel
 
 
 # ------------------------------
+
+def get_bool_env_var(name: str, default: bool = False) -> bool:
+	value = os.environ.get(name)
+	if value is None:
+		return default
+	return value.lower() in ("1", "true", "yes", "on")
+
 
 @dataclass
 class ServerSettings():
@@ -55,6 +62,10 @@ class ServerSettings():
 	#: based on available hardware.
 	gpu_count: int = int(os.environ.get("GEN3C_GPU_COUNT", 0))
 
+	#: Lightweight API debug mode. Uses a deterministic in-memory model instead
+	#: of loading checkpoints or CUDA, so request/response handling can be tested quickly.
+	api_debug: bool = get_bool_env_var("GEN3C_API_DEBUG", default=False)
+
 
 settings = ServerSettings()
 model: InferenceModel | None = None
@@ -64,7 +75,11 @@ async def lifespan(app: FastAPI):
 	global model
 
 	model_name = settings.model.lower()
-	if model_name in ("cosmos", "cosmos-predict1"):
+	if settings.api_debug or model_name == "debug":
+		from server_debug import DebugInferenceModel
+		cls = DebugInferenceModel
+	elif model_name in ("cosmos", "cosmos-predict1"):
+		from server_cosmos import CosmosModel
 		cls = CosmosModel
 	else:
 		raise ValueError(f"Unsupported model type: '{settings.model}'")
@@ -97,20 +112,31 @@ def get_bool_query_param(request: Request, name: str, default: bool) -> bool:
 	return b_str.lower() in ("1", "true", "yes", "")
 
 
+async def read_api_message(request: Request, allowed_types: tuple[type, ...]):
+	content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+	if content_type not in (API_MEDIA_TYPE, "application/json"):
+		raise APIMessageError(f"Unsupported Content-Type: {content_type or '<missing>'}")
+
+	return loads_api_message(await request.body(), allowed_types=allowed_types)
+
+
 @app.post("/request-inference", response_class=Response, response_model=None)
 async def request_inference(request: Request):
 	"""
 	Start a new asynchronous inference job.
 	"""
 	sync = get_bool_query_param(request, "sync", default=False)
-	req: bytes = await request.body()
-	req = pickle.loads(req)
+	try:
+		req = await read_api_message(request, allowed_types=(InferenceRequest,))
+	except APIMessageError as e:
+		logger.warning(f"Invalid inference request: {e}")
+		return Response(str(e), status_code=400)
 
 	try:
 		if sync:
 			result = await model.request_inference_sync(req)
-			return Response(content=pickle.dumps(result),
-							media_type="application/octet-stream")
+			return Response(content=dumps_api_message(result),
+							media_type=API_MEDIA_TYPE)
 		else:
 			model.request_inference(req)
 	except Exception as e:
@@ -127,8 +153,11 @@ async def seed_model(request: Request):
 	Start a new asynchronous inference job.
 	"""
 	sync = get_bool_query_param(request, "sync", default=False)
-	req: bytes = await request.body()
-	req = pickle.loads(req)
+	try:
+		req = await read_api_message(request, allowed_types=(CompressedSeedingRequest, SeedingRequest))
+	except APIMessageError as e:
+		logger.warning(f"Invalid seeding request: {e}")
+		return Response(str(e), status_code=400)
 
 	if isinstance(req, CompressedSeedingRequest):
 		req.decompress()
@@ -143,8 +172,8 @@ async def seed_model(request: Request):
 		return Response(str(e), status_code=400)
 
 	# return Response("Seeding request accepted.", status_code=(200 if sync else 202))
-	return Response(content=pickle.dumps(result),
-					media_type="application/octet-stream")
+	return Response(content=dumps_api_message(result),
+					media_type=API_MEDIA_TYPE)
 
 
 @app.get("/inference-result", response_class=Response, response_model=None)
@@ -161,8 +190,8 @@ async def inference_results_or_none(request_id: str):
 		return Response(content="Result not ready",
 						status_code=503)
 	else:
-		return Response(content=pickle.dumps(result),
-						media_type="application/octet-stream")
+		return Response(content=dumps_api_message(result),
+						media_type=API_MEDIA_TYPE)
 
 
 @app.get("/image", response_class=Response)
