@@ -35,6 +35,14 @@ CUDA_HOME=$CONDA_PREFIX fastapi dev --no-reload ./api/server.py --host 0.0.0.0
 
 It may take a while to load the model weights. The server is ready when "Uvicorn running on ..." is printed.
 
+For a quick API-only sanity check that does not load checkpoints or CUDA, run the debug check from the `gui` directory:
+
+```bash
+GEN3C_API_DEBUG=1 python ./api/debug_api_check.py
+```
+
+You can also start the server with `GEN3C_API_DEBUG=1` to exercise the HTTP routes using a deterministic in-memory model.
+
 
 ### SSH tunnel
 

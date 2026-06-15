@@ -29,10 +29,16 @@ import numpy as np
 from api_serialization import API_MEDIA_TYPE, APIMessageError, dumps_api_message, loads_api_message
 from api_types import CompressedSeedingRequest, InferenceRequest, SeedingRequest
 from server_base import InferenceModel
-from server_cosmos import CosmosModel
 
 
 # ------------------------------
+
+def get_bool_env_var(name: str, default: bool = False) -> bool:
+	value = os.environ.get(name)
+	if value is None:
+		return default
+	return value.lower() in ("1", "true", "yes", "on")
+
 
 @dataclass
 class ServerSettings():
@@ -56,6 +62,10 @@ class ServerSettings():
 	#: based on available hardware.
 	gpu_count: int = int(os.environ.get("GEN3C_GPU_COUNT", 0))
 
+	#: Lightweight API debug mode. Uses a deterministic in-memory model instead
+	#: of loading checkpoints or CUDA, so request/response handling can be tested quickly.
+	api_debug: bool = get_bool_env_var("GEN3C_API_DEBUG", default=False)
+
 
 settings = ServerSettings()
 model: InferenceModel | None = None
@@ -65,7 +75,11 @@ async def lifespan(app: FastAPI):
 	global model
 
 	model_name = settings.model.lower()
-	if model_name in ("cosmos", "cosmos-predict1"):
+	if settings.api_debug or model_name == "debug":
+		from server_debug import DebugInferenceModel
+		cls = DebugInferenceModel
+	elif model_name in ("cosmos", "cosmos-predict1"):
+		from server_cosmos import CosmosModel
 		cls = CosmosModel
 	else:
 		raise ValueError(f"Unsupported model type: '{settings.model}'")
